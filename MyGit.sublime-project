@@ -1,0 +1,20 @@
+{
+	"folders":
+	[
+		{
+			"path": ".",
+		}
+	],
+	"settings": {
+		"LSP": {
+			"LSP-pyright": {
+				"settings": {
+					"pyright.dev_environment": "sublime_text_38",
+				},
+			},
+		},
+	},
+	"debugger_configurations":
+	[
+	],
+}
