@@ -1,0 +1,88 @@
+[
+	    {
+        "caption": "MyGit: Checkout…",
+        "command": "checkout_branch",
+    },
+    {
+        "caption": "MyGit: Create Branch…",
+        "command": "create_branch",
+    },
+    {
+        "caption": "MyGit: Create Branch from Remote Branch…",
+        "command": "checkout_branch",
+        "args": {
+            "create_branch": true,
+            "local_refs": false,
+            "tag_refs": false,
+            "remote_refs": true
+        }
+    },
+    {
+        "caption": "MyGit: Rename Branch…",
+        "command": "rename_branch"
+    },
+    {
+        "caption": "MyGit: Delete Branch…",
+        "command": "delete_branch",
+        "args": {
+            "prompt": true
+        }
+    },
+    {
+        "caption": "MyGit: Delete Remote Branch…",
+        "command": "delete_branch",
+        "args": {
+            "prompt": true,
+            "local_refs": false,
+            "remote_refs": true
+        }
+    },
+    {
+        "caption": "MyGit: Merge Branch…",
+        "command": "merge_branch",
+    },
+    {
+        "caption": "MyGit: Create Tag…",
+        "command": "create_tag"
+    },
+    {
+        "caption": "MyGit: Add Remote…",
+        "command": "add_remote"
+    },
+    {
+        "caption": "MyGit: Delete Remote…",
+        "command": "delete_remote"
+    },
+    {
+        "caption": "MyGit: Add Submodule…",
+        "command": "add_submodule"
+    },
+    {
+        "caption": "MyGit: Stash…",
+        "command": "stash",
+    },
+    {
+        "caption": "MyGit: Pop Stash\tgit stash pop",
+        "command": "pop_stash",
+    },
+    {
+        "caption": "MyGit: Drop Stash…\tgit stash drop",
+        "command": "drop_stash",
+    },
+    {
+        "caption": "MyGit: Clear All Stashes",
+        "command": "clear_stashes",
+    },
+    {
+        "caption": "MyGit: Stage All Modified and Untracked\tgit add -A",
+        "command": "stage_all",
+    },
+    {
+        "caption": "MyGit: Stage All Modified\tgit add -u",
+        "command": "stage_all_modified",
+    },
+    {
+        "caption": "MyGit: Unstage All\tgit reset",
+        "command": "unstage_all",
+    },
+]

@@ -1,0 +1,10 @@
+{
+	"$schema": "sublime://packagecontrol.io/schemas/dependencies",
+	"*": {
+		"*": [
+			"pycparser",
+			"cffi",
+			"pygit2"
+		]
+	}
+}

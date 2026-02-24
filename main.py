@@ -1,10 +1,11 @@
 import sublime
 import sublime_plugin
 
-from typing import List, Optional
-
+from typing import List, Optional, Set
+import os
+os.add_dll_directory(r"C:\Users\Lehdhili\AppData\Roaming\Sublime Text\Lib\python38\python3dll")
 import pygit2  # noqa: E402
-from utils.utils import git_root, is_branch_fully_merged, is_valid_repo, iter_refs, name_to_path, path_to_name  # noqa: E402
+from .utils.utils import git_root, is_branch_fully_merged, is_valid_repo, iter_refs, name_to_path, path_to_name  # noqa: E402
 
 
 def git_root_setting(view: sublime.View) -> Optional[str]:
@@ -51,13 +52,13 @@ class CheckoutBranchCommand(sublime_plugin.TextCommand):
         if not isinstance(root := git_root_setting(self.view), str):
             return
         if "branch" not in args:
-            return CheckoutBranchBranchInputHandler(
+            return BranchInputHandler(
                 root,
                 args.get("local_refs", True),
                 args.get("remote_refs", True),
                 args.get("tag_refs", True),
             )
-        path = name_to_path(root, args["branch"])
+        path = name_to_path(pygit2.Repository(root), args["branch"])
         if path is not None and not path.startswith("refs/heads"):
             args["branch"] = path
             if "create_branch" not in args:
@@ -73,7 +74,7 @@ def _active_branch_path(repo: pygit2.Repository) -> Optional[str]:
     return repo.head.name  # e.g. "refs/heads/main"
 
 
-class CheckoutBranchBranchInputHandler(sublime_plugin.ListInputHandler):
+class BranchInputHandler(sublime_plugin.ListInputHandler):
     KIND_LOCAL = (sublime.KindId.COLOR_BLUISH, "L", "Local Branch")
     KIND_REMOTE = (sublime.KindId.COLOR_PURPLISH, "R", "Remote Branch")
     KIND_TAG = (sublime.KindId.COLOR_YELLOWISH, "T", "Tag")
@@ -83,9 +84,6 @@ class CheckoutBranchBranchInputHandler(sublime_plugin.ListInputHandler):
         self.local_refs = local_refs
         self.remote_refs = remote_refs
         self.tag_refs = tag_refs
-
-    def name(self):
-        return "branch"
 
     def list_items(self):
         repo = pygit2.Repository(self.root)
@@ -97,6 +95,7 @@ class CheckoutBranchBranchInputHandler(sublime_plugin.ListInputHandler):
             for j, head in enumerate(iter_refs(self.root, "heads")):
                 if active_path and head == active_path:
                     i = j
+                    continue
                 items.append(
                     sublime.ListInputItem(
                         path_to_name(head), head, kind=self.KIND_LOCAL
@@ -106,7 +105,7 @@ class CheckoutBranchBranchInputHandler(sublime_plugin.ListInputHandler):
             items.extend(
                 sublime.ListInputItem(path_to_name(ref), ref, kind=self.KIND_REMOTE)
                 for ref in iter_refs(self.root, "remotes")
-                if ref[-4:] != "HEAD"
+                # if ref[-4:] != "HEAD"
             )
         if self.tag_refs:
             items.extend(
@@ -288,7 +287,8 @@ class DeleteBranchCommand(sublime_plugin.TextCommand):
                 return
             cmd = ["branch", "-d", branch_name]
             if branch.startswith("refs/remotes/"):
-                if not is_branch_fully_merged(root, branch_name):
+                repo = pygit2.Repository(root)
+                if not is_branch_fully_merged(repo, branch):
                     if sublime.ok_cancel_dialog(
                         f"{branch_name} isn't fully merged.\nDo you want to force the deletion?\nThis will also delete the branch on the remote repository.",
                         "Force Delete",
@@ -316,19 +316,28 @@ class DeleteBranchCommand(sublime_plugin.TextCommand):
             )
 
 
-class DeleteBranchBranchInputHandler(CheckoutBranchBranchInputHandler):
+class DeleteBranchBranchInputHandler(BranchInputHandler):
     def next_input(self, args):
         return None
 
 
 class MergeBranchCommand(sublime_plugin.TextCommand):
-    def run(self, _, branch: str, **args):
-        print("final command:", args)
+    merge_options = {
+        "merge": "Select to run command",
+        "--no-ff": "Always create a merge commit",
+        "--no-commit": "Stage the merge, but don't commit yet",
+        "--squash": "Combine merged changes into a single commit",
+        "--allow-unrelated-histories": "Allow merging branches that do not share a common ancestor"
+    }
+
+    def run(self, _, branch: str, options: List[str]):
         if not isinstance(git_root_setting(self.view), str):
             return
 
         branch_name = path_to_name(branch)
-        cmd = ["merge", branch_name]
+        if options[-1] == "merge":
+            options = options[0:-2]
+        cmd = ["merge", branch_name, *options]
         git_run(self.view, cmd)
 
     def is_enabled(self):
@@ -336,7 +345,7 @@ class MergeBranchCommand(sublime_plugin.TextCommand):
         return isinstance(root, str) and is_valid_repo(root)
 
     def input_description(self):
-        return "Merge"
+        return "Merge Branch"
 
     def input(self, args):
         if not isinstance(root := git_root_setting(self.view), str):
@@ -349,8 +358,10 @@ class MergeBranchCommand(sublime_plugin.TextCommand):
                 args.get("remote_refs", True),
                 args.get("tag_refs", True),
             )
+        if "options" not in args:
+            return MergeBranchOptionsInputHandler(list(MergeBranchCommand.merge_options.keys()))
 
-class MergeBranchBranchInputHandler(CheckoutBranchBranchInputHandler):
+class MergeBranchBranchInputHandler(BranchInputHandler):
     def __init__(self, root: str, local_refs: bool, remote_refs: bool, tag_refs: bool):
         super().__init__(root, local_refs, remote_refs, tag_refs)
         repo = pygit2.Repository(self.root)
@@ -369,54 +380,65 @@ class MergeBranchBranchInputHandler(CheckoutBranchBranchInputHandler):
 
     def list_items(self):
         items = super().list_items()
-        return (items[0][1:], items[1])
+        return items
 
     def next_input(self, args):
-        return MergeBranchExtraArgsInputHandler([False, False, False, False, False])
+        if "options" not in args:
+            return MergeBranchOptionsInputHandler(list(MergeBranchCommand.merge_options.keys()))
 
-class MergeBranchExtraArgsInputHandler(sublime_plugin.ListInputHandler):
-    def __init__(self, sd) -> None:
-        self.hd = (sd, [
-            "merge\tSelect to run command",
-            "--no-ff\tAlways create a merge commit",
-            "--no-commit\tStage the merge, but don't commit yet",
-            "--squash\tCombine merged changes into a single commit",
-            "--allow-unrelated-histories\tAllow merging branches that do not share a common ancestor"
-        ])
+def merge_options_after(selected: str) -> Set[str]:
+    """Return which options are still valid after selecting `selected`."""
+    excludes = {
+        "--no-ff":     {"--squash"},
+        "--squash":    {"--no-ff", "--no-commit"},
+        "--no-commit": {"--squash"},
+    }
+    all_options = set(MergeBranchCommand.merge_options.keys())
+    return all_options - excludes.get(selected, set()) - {selected}
+
+
+class MergeBranchOptionsInputHandler(sublime_plugin.ListInputHandler):
+    def __init__(self, options: List[str], accumulated: List[str] = [], selected_index=0) -> None:
+        self.options = options
+        self.accumulated = accumulated
+        self.selected_index = selected_index
+
+        self.done = False
+        self.selected = None
 
     def name(self) -> str:
-        return "extra"
+        return "options"
 
     def placeholder(self) -> str:
         return "Choose flags"
 
     def list_items(self):
-        return self.hd[1]
+        return (
+            [
+                sublime.ListInputItem(
+                    item, self.accumulated + [item],
+                    annotation=MergeBranchCommand.merge_options[item]
+                )
+                for item in self.options
+            ],
+            self.selected_index
+        )
 
-    def validate(self, text: str) -> bool:
-        if text.startswith("merge"):
-            return True
-        for i in range(1, len(self.hd[0])):
-            if self.hd[1][i].startswith(text):
-                self.hd[0][i] = not self.hd[0][i]
-                break
-        print(self.hd)
-        return False
-
-    # def confirm(self, text: str, event: Optional[Event] = None):
-    #     return super().confirm(text, event)
+    def confirm(self, value: List[str], event=None):
+        if value[-1] == "merge":
+            self.done = True
+        self.selected = value
 
     def next_input(self, args):
-        # print(args)
-        if "extra" not in args:
-            args["extra"] = []
-        # if not self.hd[0][0]:
-        #     return
-        for i in range(1, len(self.hd[0])):
-            if self.hd[0][i]:
-                args["extra"] += self.hd[1][i].split('\t')[0]
-
-        print("ni:", args)
+        if not self.done and self.selected is not None:
+            selected = self.selected[-1]
+            selected_index = self.options.index(selected)
+            remaining = set(self.options) & merge_options_after(selected)
+            remaining.remove("merge")
+            remaining = ["merge", *remaining]
+            return MergeBranchOptionsInputHandler(
+                remaining, self.selected, selected_index
+            )
 
 
 class AddRemoteCommand(sublime_plugin.TextCommand):
@@ -623,6 +645,107 @@ class AddSubmoduleSubmoduleNameInputHandler(sublime_plugin.TextInputHandler):
     def preview(self, text: str):
         return "The name that will be stored in the .gitmodules file"
 
+def stash_subcommand(selected: List[str]) -> str:
+    return "push" if any(f in ('--include-untracked', '--keep-index') for f in selected) else "save"
+
+def get_stash_cmd(selected: List[str], text: str) -> List[str]:
+    subcommand = stash_subcommand(selected)
+    result = ["stash", subcommand, *selected]
+    if text:
+        if subcommand == "push":
+            result += "-m"
+        result.append(f'"{text}"' if ' ' in text else text)
+    return result
+
+class StashCommand(sublime_plugin.TextCommand):
+    stash_options = {
+        "stash": "Select to run command",
+        "--include-untracked": "Include untracked files in the stash",
+        "--keep-index": "Leave staged changes in the working directory",
+        "--stage": "Stash staged changes only"
+    }
+
+    def run(self, _, options: List[str], message=""):
+        if not isinstance(git_root_setting(self.view), str):
+            return
+
+        if options[-1] == "stash":
+            options = options[:-2]
+        cmd = get_stash_cmd(options, message)
+        git_run(self.view, cmd)
+
+    def is_enabled(self):
+        root = git_root_setting(self.view)
+        return isinstance(root, str) and is_valid_repo(root)
+
+    def input_description(self):
+        return "Stash"
+
+    def input(self, args):
+        if not isinstance(git_root_setting(self.view), str):
+            return
+
+        if "options" not in args:
+            return StashOptionsInputHandler(list(self.stash_options.keys()))
+
+        if "message" not in args:
+            return StashMessageInputHandler(args["options"])
+
+
+class StashOptionsInputHandler(sublime_plugin.ListInputHandler):
+    def __init__(self, options: List[str], accumulated: List[str] = [], selected_index=0) -> None:
+        self.options = options
+        self.accumulated = accumulated
+        self.selected_index = selected_index
+
+        self.stash = False
+        self.selected = None
+
+    def name(self) -> str:
+        return "options"
+
+    def placeholder(self) -> str:
+        return "Choose flags"
+
+    def list_items(self):
+        return (
+            [sublime.ListInputItem(item, self.accumulated + [item], annotation=StashCommand.stash_options[item]) for item in self.options],
+            self.selected_index
+        )
+
+    def confirm(self, value: List[str], event = None):
+        if value[-1] == "stash":
+            self.stash = True
+        self.selected = value
+
+    def next_input(self, args):
+        if not self.stash and self.selected is not None:
+            selected = self.selected[-1]
+            selected_index = self.options.index(selected)
+            options = {"stash"}
+            if selected in ("--include-untracked", "--staged"):
+                options.add("--keep-index")
+            elif selected == "--keep-index":
+                options.add("--include-untracked")
+                options.add("--staged")
+            return StashOptionsInputHandler(list(options), self.selected, selected_index)
+
+        if "message" not in args:
+            return StashMessageInputHandler(args["options"])
+
+class StashMessageInputHandler(sublime_plugin.TextInputHandler):
+    def __init__(self, selected: List[str]) -> None:
+        self.selected = selected
+        self.subcommand = stash_subcommand(selected)
+
+    def name(self) -> str:
+        return "message"
+
+    def preview(self, text: str) -> str:
+        return "Runs: git " + ' '.join(get_stash_cmd(self.selected, text))
+
+    def placeholder(self) -> str:
+        return "Optional Message"
 
 class PopStashCommand(sublime_plugin.TextCommand):
     def run(self, edit):
