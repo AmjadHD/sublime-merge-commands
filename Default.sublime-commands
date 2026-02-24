@@ -42,6 +42,10 @@
         "command": "merge_branch",
     },
     {
+        "caption": "MyGit: Rebase Bransh…",
+        "command": "rebase_branch",
+    },
+    {
         "caption": "MyGit: Create Tag…",
         "command": "create_tag"
     },

@@ -839,3 +839,38 @@ class FetchModeInputHandler(sublime_plugin.ListInputHandler):
     def next_input(self, args):
         if "remote" not in args and "--all" not in args["mode"]:
             return RemoteInputHandler(self.root)
+
+class RebaseBranchCommand(sublime_plugin.TextCommand):
+    def run(self, _, branch: str):  # type: ignore
+        if not isinstance(git_root_setting(self.view), str):
+            return
+        git_run(self.view, ["rebase", path_to_name(branch)])
+
+    def is_enabled(self):
+        root = git_root_setting(self.view)
+        return isinstance(root, str) and is_valid_repo(root)
+
+    def input_description(self):
+        return "Rebase Branch"
+
+    def input(self, args):
+        if not isinstance(root := git_root_setting(self.view), str):
+            return
+        if "branch" not in args:
+            return RebaseBranchBranchInputHandler(root)
+
+
+class RebaseBranchBranchInputHandler(BranchInputHandler):
+    def __init__(self, root: str):
+        super().__init__(root, local_refs=True, remote_refs=True, tag_refs=False)
+        repo = pygit2.Repository(root)
+        self.current = repo.head.shorthand if not repo.head_is_detached else str(repo.head.target)[:7]
+
+    def placeholder(self) -> str:
+        return "Branch Name"
+
+    def preview(self, text: str) -> str:
+        return f"Rebase {self.current} onto {path_to_name(text)}"
+
+    def next_input(self, args):
+        return None
