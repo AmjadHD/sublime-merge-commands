@@ -569,10 +569,10 @@ class DeleteRemoteCommand(sublime_plugin.TextCommand):
 
     def input(self, args):
         if (root := git_root_setting(self.view)) and "remote" not in args:
-            return DeleteRemoteRemoteInputHandler(root)
+            return RemoteInputHandler(root)
 
 
-class DeleteRemoteRemoteInputHandler(sublime_plugin.ListInputHandler):
+class RemoteInputHandler(sublime_plugin.ListInputHandler):
     def __init__(self, root: str):
         self.root = root
 
@@ -784,3 +784,58 @@ class UnstageAllCommand(sublime_plugin.TextCommand):
     def run(self, edit):
         if git_root_setting(self.view):
             git_run(self.view, ["reset"])
+
+
+class FetchCommand(sublime_plugin.TextCommand):
+    fetch_modes = {
+        "fetch":              "Fetch from a remote",
+        "fetch --prune":      "Fetch and delete stale remote-tracking refs",
+        "fetch --tags":       "Fetch all tags from a remote",
+        "fetch --all":        "Fetch from all remotes",
+        "fetch --all --prune":"Fetch from all remotes and delete stale remote-tracking refs",
+        "fetch --all --tags": "Fetch all tags from all remotes",
+    }
+
+    def run(self, _, mode: str, remote: str = ""):  # type: ignore
+        if not isinstance(git_root_setting(self.view), str):
+            return
+        cmd = mode.split()
+        if remote:
+            cmd.append(remote)
+        git_run(self.view, cmd)
+
+    def is_enabled(self):
+        root = git_root_setting(self.view)
+        return isinstance(root, str) and is_valid_repo(root)
+
+    def input_description(self):
+        return "Fetch"
+
+    def input(self, args):
+        if not isinstance(root := git_root_setting(self.view), str):
+            return
+        if "mode" not in args:
+            return FetchModeInputHandler(root)
+        if "remote" not in args and "--all" not in args["mode"]:
+            return RemoteInputHandler(root)
+
+
+class FetchModeInputHandler(sublime_plugin.ListInputHandler):
+    def __init__(self, root: str) -> None:
+        self.root = root
+
+    def name(self) -> str:
+        return "mode"
+
+    def placeholder(self) -> str:
+        return "Fetch Mode"
+
+    def list_items(self):
+        return [
+            sublime.ListInputItem(mode, mode, annotation=annotation)
+            for mode, annotation in FetchCommand.fetch_modes.items()
+        ]
+
+    def next_input(self, args):
+        if "remote" not in args and "--all" not in args["mode"]:
+            return RemoteInputHandler(self.root)

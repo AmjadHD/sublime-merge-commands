@@ -85,4 +85,8 @@
         "caption": "MyGit: Unstage All\tgit reset",
         "command": "unstage_all",
     },
+    {
+        "caption": "MyGit: Fetsh…",
+        "command": "fetch"
+    },
 ]
