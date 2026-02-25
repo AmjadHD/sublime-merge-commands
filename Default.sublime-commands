@@ -46,6 +46,11 @@
         "command": "rebase_branch",
     },
     {
+        "caption": "MyGit: Push…",
+        "command": "push",
+        "args": { "prompt": true }
+    },
+    {
         "caption": "MyGit: Create Tag…",
         "command": "create_tag"
     },

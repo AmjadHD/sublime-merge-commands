@@ -5,7 +5,7 @@ from typing import List, Optional, Set
 import os
 os.add_dll_directory(r"C:\Users\Lehdhili\AppData\Roaming\Sublime Text\Lib\python38\python3dll")
 import pygit2  # noqa: E402
-from .utils.utils import git_root, is_branch_fully_merged, is_valid_repo, iter_refs, name_to_path, path_to_name  # noqa: E402
+from .utils.utils import git_root, can_fast_forward, is_branch_fully_merged, is_valid_repo, iter_refs, name_to_path, path_to_name  # noqa: E402
 
 
 def git_root_setting(view: sublime.View) -> Optional[str]:
@@ -79,11 +79,12 @@ class BranchInputHandler(sublime_plugin.ListInputHandler):
     KIND_REMOTE = (sublime.KindId.COLOR_PURPLISH, "R", "Remote Branch")
     KIND_TAG = (sublime.KindId.COLOR_YELLOWISH, "T", "Tag")
 
-    def __init__(self, root: str, local_refs: bool, remote_refs: bool, tag_refs: bool):
+    def __init__(self, root: str, local_refs: bool, remote_refs: bool, tag_refs: bool, include_active_branch=True):
         self.root = root
         self.local_refs = local_refs
         self.remote_refs = remote_refs
         self.tag_refs = tag_refs
+        self.include_active_branch = include_active_branch
 
     def list_items(self):
         repo = pygit2.Repository(self.root)
@@ -95,7 +96,8 @@ class BranchInputHandler(sublime_plugin.ListInputHandler):
             for j, head in enumerate(iter_refs(self.root, "heads")):
                 if active_path and head == active_path:
                     i = j
-                    continue
+                    if not self.include_active_branch:
+                        continue
                 items.append(
                     sublime.ListInputItem(
                         path_to_name(head), head, kind=self.KIND_LOCAL
@@ -874,3 +876,89 @@ class RebaseBranchBranchInputHandler(BranchInputHandler):
 
     def next_input(self, args):
         return None
+
+def is_upstream(root: str, remote: str, branch: str) -> bool:
+    tracking_ref = f"refs/remotes/{remote}/{branch}"
+    return tracking_ref not in pygit2.Repository(root).references
+
+class PushCommand(sublime_plugin.TextCommand):
+    def run(self, _, branch: str, remote: str, mode: str, prompt=True):  # type: ignore
+        if not isinstance(root := git_root_setting(self.view), str):
+            return
+        repo = pygit2.Repository(root)
+        branch_name = path_to_name(branch)
+        tracking_ref = f"refs/remotes/{remote}/{branch_name}"
+        no_tracking_ref = tracking_ref not in repo.references
+        if prompt and (no_tracking_ref or can_fast_forward(repo, tracking_ref)):
+            if sublime.ok_cancel_dialog(
+                f"Push {branch_name} to {remote}?", "Push", "Confirm Push"
+            ) != sublime.DIALOG_YES:
+                return
+        cmd = mode.split() + [remote, branch]
+        git_run(self.view, cmd)
+
+    def is_enabled(self):
+        root = git_root_setting(self.view)
+        return isinstance(root, str) and is_valid_repo(root)
+
+    def input_description(self):
+        return "Push"
+
+    def input(self, args):
+        if not isinstance(root := git_root_setting(self.view), str):
+            return
+        if "branch" not in args:
+            return PushBranchInputHandler(root)
+        if "remote" not in args:
+            return PushRemoteInputHandler(root)
+        if "mode" not in args:
+            return PushModeInputHandler(is_upstream(root, args["remote"], args["branch"]))
+
+
+class PushBranchInputHandler(BranchInputHandler):
+    def __init__(self, root: str) -> None:
+        super().__init__(root, local_refs=True, remote_refs=False, tag_refs=False)
+
+    def name(self) -> str:
+        return "branch"
+
+    def placeholder(self) -> str:
+        return "Source Branch"
+
+    def next_input(self, args):
+        if "remote" not in args:
+            return PushRemoteInputHandler(self.root)
+        if "mode" not in args:
+            return PushModeInputHandler(is_upstream(self.root, args["remote"], args["branch"]))
+
+
+class PushRemoteInputHandler(RemoteInputHandler):
+    def next_input(self, args):
+        if "mode" not in args:
+            return PushModeInputHandler(is_upstream(self.root, args["remote"], args["branch"]))
+
+
+class PushModeInputHandler(sublime_plugin.ListInputHandler):
+    push_modes = {
+        "push":                   "Push to remote",
+        "push --force-with-lease":"Push, fail if remote has changes you don't have",
+        "push --force":           "Force push, overwriting remote history",
+        "push --no-verify":       "Push, skipping pre-push hooks",
+    }
+
+    def __init__(self, is_upstream: bool) -> None:
+        self.modes = self.push_modes
+        if is_upstream:
+            self.modes["push --set-upstream"] = "Push and set upstream tracking"
+
+    def name(self) -> str:
+        return "mode"
+
+    def placeholder(self) -> str:
+        return "Push Mode"
+
+    def list_items(self):
+        return [
+            sublime.ListInputItem(mode, mode, annotation=annotation)
+            for mode, annotation in self.modes.items()
+        ]
