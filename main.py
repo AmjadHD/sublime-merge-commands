@@ -1,7 +1,7 @@
 import sublime
 import sublime_plugin
 
-from typing import List, Optional, Set
+from typing import List, Optional, Set, Dict
 import os
 os.add_dll_directory(r"C:\Users\Lehdhili\AppData\Roaming\Sublime Text\Lib\python38\python3dll")
 import pygit2  # noqa: E402
@@ -323,15 +323,54 @@ class DeleteBranchBranchInputHandler(BranchInputHandler):
         return None
 
 
-class MergeBranchCommand(sublime_plugin.TextCommand):
-    merge_options = {
-        "merge": "Select to run command",
-        "--no-ff": "Always create a merge commit",
-        "--no-commit": "Stage the merge, but don't commit yet",
-        "--squash": "Combine merged changes into a single commit",
-        "--allow-unrelated-histories": "Allow merging branches that do not share a common ancestor"
-    }
+class OptionsInputHandler(sublime_plugin.ListInputHandler):
+    options: Dict[str, str]
+    excludes: Dict[str, Set[str]]
+    terminal: str
 
+    def __init__(self, accumulated: List[str] = []) -> None:
+        self.available = [self.terminal, *self.options_after(accumulated)]
+        self.accumulated = accumulated
+        self.selected: List[str] = accumulated
+        self.done = False
+        print(f"{self.__class__.__name__}(available: {self.available}, selected: {self.selected}, accumulated: {accumulated})")
+
+    def name(self) -> str:
+        return "options"
+
+    def placeholder(self) -> str:
+        return "Choose flags"
+
+    def list_items(self):
+        return (
+            [
+                sublime.ListInputItem(item, self.accumulated + [item], annotation=self.options[item])
+                for item in self.available
+            ],
+            0
+        )
+
+    def confirm(self, value: List[str], event=None):
+        self.done = value[-1] == self.terminal
+        self.selected = value
+
+    def options_after(self, selected: List[str]) -> Set[str]:
+        result = set(self.options.keys()) - set(selected)
+        result.remove(self.terminal)
+        for val in selected:
+            result -= self.excludes.get(val, set())
+        return result
+
+    def next_input(self, args):
+        if not self.done:
+            return self.__class__(self.selected)
+        return self.tail(args)
+
+    def tail(self, args) -> Optional[sublime_plugin.CommandInputHandler]:
+        return None
+
+
+class MergeBranchCommand(sublime_plugin.TextCommand):
     def run(self, _, branch: str, options: List[str]):
         if not isinstance(git_root_setting(self.view), str):
             return
@@ -386,61 +425,23 @@ class MergeBranchBranchInputHandler(BranchInputHandler):
 
     def next_input(self, args):
         if "options" not in args:
-            return MergeBranchOptionsInputHandler(list(MergeBranchCommand.merge_options.keys()))
+            return MergeBranchOptionsInputHandler()
 
-def merge_options_after(selected: str) -> Set[str]:
-    """Return which options are still valid after selecting `selected`."""
+
+class MergeBranchOptionsInputHandler(OptionsInputHandler):
+    options = {
+        "merge":                        "Select to run command",
+        "--no-ff":                      "Always create a merge commit",
+        "--no-commit":                  "Stage the merge, but don't commit yet",
+        "--squash":                     "Combine merged changes into a single commit",
+        "--allow-unrelated-histories":  "Allow merging branches that do not share a common ancestor",
+    }
     excludes = {
         "--no-ff":     {"--squash"},
         "--squash":    {"--no-ff", "--no-commit"},
         "--no-commit": {"--squash"},
     }
-    all_options = set(MergeBranchCommand.merge_options.keys())
-    return all_options - excludes.get(selected, set()) - {selected}
-
-
-class MergeBranchOptionsInputHandler(sublime_plugin.ListInputHandler):
-    def __init__(self, options: List[str], accumulated: List[str] = [], selected_index=0) -> None:
-        self.options = options
-        self.accumulated = accumulated
-        self.selected_index = selected_index
-
-        self.done = False
-        self.selected = None
-
-    def name(self) -> str:
-        return "options"
-
-    def placeholder(self) -> str:
-        return "Choose flags"
-
-    def list_items(self):
-        return (
-            [
-                sublime.ListInputItem(
-                    item, self.accumulated + [item],
-                    annotation=MergeBranchCommand.merge_options[item]
-                )
-                for item in self.options
-            ],
-            self.selected_index
-        )
-
-    def confirm(self, value: List[str], event=None):
-        if value[-1] == "merge":
-            self.done = True
-        self.selected = value
-
-    def next_input(self, args):
-        if not self.done and self.selected is not None:
-            selected = self.selected[-1]
-            selected_index = self.options.index(selected)
-            remaining = set(self.options) & merge_options_after(selected)
-            remaining.remove("merge")
-            remaining = ["merge", *remaining]
-            return MergeBranchOptionsInputHandler(
-                remaining, self.selected, selected_index
-            )
+    terminal = "merge"
 
 
 class AddRemoteCommand(sublime_plugin.TextCommand):
@@ -659,14 +660,8 @@ def get_stash_cmd(selected: List[str], text: str) -> List[str]:
         result.append(f'"{text}"' if ' ' in text else text)
     return result
 
-class StashCommand(sublime_plugin.TextCommand):
-    stash_options = {
-        "stash": "Select to run command",
-        "--include-untracked": "Include untracked files in the stash",
-        "--keep-index": "Leave staged changes in the working directory",
-        "--stage": "Stash staged changes only"
-    }
 
+class StashCommand(sublime_plugin.TextCommand):
     def run(self, _, options: List[str], message=""):
         if not isinstance(git_root_setting(self.view), str):
             return
@@ -688,52 +683,30 @@ class StashCommand(sublime_plugin.TextCommand):
             return
 
         if "options" not in args:
-            return StashOptionsInputHandler(list(self.stash_options.keys()))
+            return StashOptionsInputHandler()
 
         if "message" not in args:
             return StashMessageInputHandler(args["options"])
 
 
-class StashOptionsInputHandler(sublime_plugin.ListInputHandler):
-    def __init__(self, options: List[str], accumulated: List[str] = [], selected_index=0) -> None:
-        self.options = options
-        self.accumulated = accumulated
-        self.selected_index = selected_index
+class StashOptionsInputHandler(OptionsInputHandler):
+    options = {
+        "stash":               "Select to run command",
+        "--include-untracked": "Include untracked files in the stash",
+        "--keep-index":        "Leave staged changes in the working directory",
+        "--staged":            "Stash staged changes only",
+    }
+    excludes = {
+        "--include-untracked": {"--staged"},
+        "--staged":            {"--include-untracked"},
+        "--keep-index":        set(),
+    }
+    terminal = "stash"
 
-        self.stash = False
-        self.selected = None
-
-    def name(self) -> str:
-        return "options"
-
-    def placeholder(self) -> str:
-        return "Choose flags"
-
-    def list_items(self):
-        return (
-            [sublime.ListInputItem(item, self.accumulated + [item], annotation=StashCommand.stash_options[item]) for item in self.options],
-            self.selected_index
-        )
-
-    def confirm(self, value: List[str], event = None):
-        if value[-1] == "stash":
-            self.stash = True
-        self.selected = value
-
-    def next_input(self, args):
-        if not self.stash and self.selected is not None:
-            selected = self.selected[-1]
-            selected_index = self.options.index(selected)
-            options = {"stash"}
-            if selected in ("--include-untracked", "--staged"):
-                options.add("--keep-index")
-            elif selected == "--keep-index":
-                options.add("--include-untracked")
-                options.add("--staged")
-            return StashOptionsInputHandler(list(options), self.selected, selected_index)
-
+    def tail(self, args):
         if "message" not in args:
             return StashMessageInputHandler(args["options"])
+
 
 class StashMessageInputHandler(sublime_plugin.TextInputHandler):
     def __init__(self, selected: List[str]) -> None:
