@@ -393,24 +393,16 @@ class MergeBranchCommand(sublime_plugin.TextCommand):
             return
 
         if "branch" not in args:
-            return MergeBranchBranchInputHandler(
-                root,
-                args.get("local_refs", True),
-                args.get("remote_refs", True),
-                args.get("tag_refs", True),
-            )
+            return MergeBranchBranchInputHandler(root)
         if "options" not in args:
-            return MergeBranchOptionsInputHandler(list(MergeBranchCommand.merge_options.keys()))
+            return MergeBranchOptionsInputHandler()
 
 class MergeBranchBranchInputHandler(BranchInputHandler):
-    def __init__(self, root: str, local_refs: bool, remote_refs: bool, tag_refs: bool):
-        super().__init__(root, local_refs, remote_refs, tag_refs)
+    def __init__(self, root: str):
+        super().__init__(root, local_refs=True, remote_refs=True, tag_refs=True, include_active_branch=False)
         repo = pygit2.Repository(self.root)
         # active_branch is the short name (e.g. "main"); fall back to detached HEAD OID
-        if not repo.head_is_detached:
-            self.active_branch = repo.head.shorthand
-        else:
-            self.active_branch = str(repo.head.target)[:7]
+        self.active_branch = str(repo.head.target)[:7] if repo.head_is_detached else repo.head.shorthand
 
     def placeholder(self) -> str:
         return "Branch Name"
@@ -418,10 +410,6 @@ class MergeBranchBranchInputHandler(BranchInputHandler):
     def preview(self, text: str) -> str:
         branch_name = path_to_name(text)
         return f"Merge {branch_name} into {self.active_branch}"
-
-    def list_items(self):
-        items = super().list_items()
-        return items
 
     def next_input(self, args):
         if "options" not in args:
