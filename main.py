@@ -107,7 +107,7 @@ class BranchInputHandler(sublime_plugin.ListInputHandler):
             items.extend(
                 sublime.ListInputItem(path_to_name(ref), ref, kind=self.KIND_REMOTE)
                 for ref in iter_refs(self.root, "remotes")
-                # if ref[-4:] != "HEAD"
+                if ref[-4:] != "HEAD"
             )
         if self.tag_refs:
             items.extend(
