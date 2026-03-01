@@ -51,6 +51,14 @@
         "args": { "prompt": true }
     },
     {
+        "caption": "MyGit: Fetsh…",
+        "command": "fetch"
+    },
+    {
+        "caption": "MyGit: Pull…",
+        "command": "pull",
+    },
+    {
         "caption": "MyGit: Create Tag…",
         "command": "create_tag"
     },
@@ -93,9 +101,5 @@
     {
         "caption": "MyGit: Unstage All\tgit reset",
         "command": "unstage_all",
-    },
-    {
-        "caption": "MyGit: Fetsh…",
-        "command": "fetch"
     },
 ]

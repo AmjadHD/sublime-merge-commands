@@ -570,7 +570,7 @@ class RemoteInputHandler(sublime_plugin.ListInputHandler):
     def name(self):
         return "remote"
 
-    def list_items(self):
+    def list_items(self): # type: ignore
         repo = pygit2.Repository(self.root)
         return list(repo.remotes.names())
 
@@ -750,15 +750,6 @@ class UnstageAllCommand(sublime_plugin.TextCommand):
 
 
 class FetchCommand(sublime_plugin.TextCommand):
-    fetch_modes = {
-        "fetch":              "Fetch from a remote",
-        "fetch --prune":      "Fetch and delete stale remote-tracking refs",
-        "fetch --tags":       "Fetch all tags from a remote",
-        "fetch --all":        "Fetch from all remotes",
-        "fetch --all --prune":"Fetch from all remotes and delete stale remote-tracking refs",
-        "fetch --all --tags": "Fetch all tags from all remotes",
-    }
-
     def run(self, _, mode: str, remote: str = ""):  # type: ignore
         if not isinstance(git_root_setting(self.view), str):
             return
@@ -784,6 +775,15 @@ class FetchCommand(sublime_plugin.TextCommand):
 
 
 class FetchModeInputHandler(sublime_plugin.ListInputHandler):
+    modes = {
+        "fetch":              "Fetch from a remote",
+        "fetch --prune":      "Fetch and delete stale remote-tracking refs",
+        "fetch --tags":       "Fetch all tags from a remote",
+        "fetch --all":        "Fetch from all remotes",
+        "fetch --all --prune":"Fetch from all remotes and delete stale remote-tracking refs",
+        "fetch --all --tags": "Fetch all tags from all remotes",
+    }
+
     def __init__(self, root: str) -> None:
         self.root = root
 
@@ -791,16 +791,58 @@ class FetchModeInputHandler(sublime_plugin.ListInputHandler):
         return "mode"
 
     def placeholder(self) -> str:
-        return "Fetch Mode"
+        return "Fetch Options"
 
     def list_items(self):
         return [
             sublime.ListInputItem(mode, mode, annotation=annotation)
-            for mode, annotation in FetchCommand.fetch_modes.items()
+            for mode, annotation in self.modes.items()
         ]
 
     def next_input(self, args):
         if "remote" not in args and "--all" not in args["mode"]:
+            return RemoteInputHandler(self.root)
+
+
+class PullCommand(sublime_plugin.TextCommand):
+    def run(self, _, mode: str, remote: str = ""):  # type: ignore
+        if not isinstance(git_root_setting(self.view), str):
+            return
+        cmd = mode.split()
+        if remote:
+            cmd.append(remote)
+        git_run(self.view, cmd)
+
+    def is_enabled(self):
+        root = git_root_setting(self.view)
+        return isinstance(root, str) and is_valid_repo(root)
+
+    def input_description(self):
+        return "Pull"
+
+    def input(self, args):
+        if not isinstance(root := git_root_setting(self.view), str):
+            return
+        if "mode" not in args:
+            return PullModeInputHandler(root)
+        if "remote" not in args and "--all" not in args["mode"] and "pull" not in args["mode"]:
+            return RemoteInputHandler(root)
+
+
+class PullModeInputHandler(FetchModeInputHandler):
+    modes = {
+        "pull":                      "Pull from tracking remote",
+        "pull --ff-only":            "Pull, fail if a merge commit would be created",
+        "pull --rebase":             "Rebase local commits on top of fetched changes",
+        "pull --rebase --autostash": "Rebase, automatically stashing and restoring local changes",
+        **FetchModeInputHandler.modes,
+    }
+
+    def placeholder(self) -> str:
+        return "Pull Options"
+
+    def next_input(self, args):
+        if "remote" not in args and "--all" not in args["mode"] and "pull" not in args["mode"]:
             return RemoteInputHandler(self.root)
 
 class RebaseBranchCommand(sublime_plugin.TextCommand):
