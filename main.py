@@ -333,7 +333,6 @@ class OptionsInputHandler(sublime_plugin.ListInputHandler):
         self.accumulated = accumulated
         self.selected: List[str] = accumulated
         self.done = False
-        print(f"{self.__class__.__name__}(available: {self.available}, selected: {self.selected}, accumulated: {accumulated})")
 
     def name(self) -> str:
         return "options"
@@ -456,7 +455,7 @@ class AddRemoteNameInputHandler(sublime_plugin.TextInputHandler):
         return "name"
 
     def validate(self, text: str, event = None):
-        return not any(c in text for c in "./\\:[?^*~")
+        return not any(c in text for c in " ./\\:[?^*~")
 
     def preview(self, text: str):
         return "" if self.validate(text) else "Invalid Remote Name"
@@ -576,6 +575,45 @@ class RemoteInputHandler(sublime_plugin.ListInputHandler):
 
     def placeholder(self):
         return "Remote"
+
+
+class RenameRemoteCommand(sublime_plugin.TextCommand):
+    def run(self, _, remote: str, new_name: str):  # type: ignore
+        if not isinstance(git_root_setting(self.view), str):
+            return
+        git_run(self.view, ["remote", "rename", remote, new_name])
+
+    def is_enabled(self):
+        root = git_root_setting(self.view)
+        return isinstance(root, str) and is_valid_repo(root)
+
+    def input_description(self):
+        return "Rename Remote"
+
+    def input(self, args):
+        if not isinstance(root := git_root_setting(self.view), str):
+            return
+        if "remote" not in args:
+            return RenameRemoteRemoteInputHandler(root)
+        if "new_name" not in args:
+            return RenameRemoteNewNameInputHandler()
+
+
+class RenameRemoteRemoteInputHandler(RemoteInputHandler):
+    def next_input(self, args):
+        if "new_name" not in args:
+            return RenameRemoteNewNameInputHandler()
+
+
+class RenameRemoteNewNameInputHandler(sublime_plugin.TextInputHandler):
+    def name(self) -> str:
+        return "new_name"
+
+    def placeholder(self) -> str:
+        return 'New Remote Name (e.g., "origin")'
+
+    def validate(self, text: str, event=None) -> bool:
+        return not any(c in text for c in " ./\\:[?^*~")
 
 
 class AddSubmoduleCommand(sublime_plugin.TextCommand):

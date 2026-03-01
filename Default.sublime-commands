@@ -71,6 +71,10 @@
         "command": "delete_remote"
     },
     {
+        "caption": "MyGit: Rename Remote…",
+        "command": "rename_remote",
+    },
+    {
         "caption": "MyGit: Add Submodule…",
         "command": "add_submodule"
     },
