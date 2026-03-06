@@ -86,6 +86,9 @@ class BranchInputHandler(sublime_plugin.ListInputHandler):
         self.tag_refs = tag_refs
         self.include_active_branch = include_active_branch
 
+    def name(self) -> str:
+        return "branch"
+
     def list_items(self):
         repo = pygit2.Repository(self.root)
         active_path = _active_branch_path(repo)
