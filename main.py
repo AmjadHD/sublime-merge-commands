@@ -8,48 +8,47 @@ import pygit2  # noqa: E402
 from .utils.utils import git_root, can_fast_forward, is_branch_fully_merged, is_valid_repo, iter_refs, name_to_path, path_to_name  # noqa: E402
 
 
-def git_root_setting(view: sublime.View) -> Optional[str]:
-    settings = view.settings()
-    if "git_root" not in settings:
-        settings["git_root"] = git_root(
-            sublime.expand_variables("$file_path", view.window().extract_variables())  # type: ignore
-        )
-    result = settings["git_root"]
-    if isinstance(result, str) or result is None:
-        return result
-    else:
-        raise ValueError("git_root setting must be a string or null")
+class MyGitCommand(sublime_plugin.TextCommand):
+    def is_enabled(self):
+        root = self.git_root_setting()
+        return root is not None and is_valid_repo(root)
+
+    def git_run(self, cmd: List[str]):
+        cmd.insert(0, "git")
+        if (w := self.view.window()):
+            w.run_command("exec", {"cmd": cmd})
+
+    def git_root_setting(self) -> Optional[str]:
+        settings = self.view.settings()
+        if "git_root" not in settings:
+            settings["git_root"] = git_root(
+                self.view.window().extract_variables().get("file_path", "")  # type: ignore
+            )
+        result = settings["git_root"]
+        if isinstance(result, str) or result is None:
+            return result
+        else:
+            raise ValueError("git_root setting must be a string or null")
 
 
-def git_run(view: sublime.View, cmd: List[str]):
-    cmd.insert(0, "git")
-    if (w := view.window()):
-        w.run_command("exec", {"cmd": cmd})
-
-
-class CheckoutBranchCommand(sublime_plugin.TextCommand):
+class CheckoutBranchCommand(MyGitCommand):
     def run( # type: ignore
         self, edit, branch: str, create_branch=False, new_name: Optional[str] = None
     ):
-        if git_root_setting(self.view):
-            if not create_branch or branch.startswith("refs/heads"):
-                new_name = None
-            cmd = ["checkout"]
-            if new_name:
-                cmd.append("-b")
-                cmd.append(new_name)
-            cmd.append(path_to_name(branch))
-            git_run(self.view, cmd)
-
-    def is_enabled(self):
-        root = git_root_setting(self.view)
-        return isinstance(root, str) and is_valid_repo(root)
+        if not create_branch or branch.startswith("refs/heads"):
+            new_name = None
+        cmd = ["checkout"]
+        if new_name:
+            cmd.append("-b")
+            cmd.append(new_name)
+        cmd.append(path_to_name(branch))
+        self.git_run(cmd)
 
     def input_description(self):
         return "Checkout"
 
     def input(self, args):
-        if not isinstance(root := git_root_setting(self.view), str):
+        if not (root := self.git_root_setting()):
             return
         if "branch" not in args:
             return BranchInputHandler(
@@ -181,14 +180,9 @@ class CheckoutBranchNewNameInputHandler(sublime_plugin.TextInputHandler):
         return len(text) != 0
 
 
-class CreateBranchCommand(sublime_plugin.TextCommand):
+class CreateBranchCommand(MyGitCommand):
     def run(self, edit, name: str): # type: ignore
-        if git_root_setting(self.view) is None:
-            return
-        git_run(self.view, ["checkout", "-b", name])
-
-    def is_enabled(self):
-        return git_root_setting(self.view) is not None
+        self.git_run(["checkout", "-b", name])
 
     def input_description(self):
         return "Create Branch"
@@ -209,21 +203,15 @@ class CreateBranchNameInputHandler(sublime_plugin.TextInputHandler):
         return len(text) != 0
 
 
-class RenameBranchCommand(sublime_plugin.TextCommand):
+class RenameBranchCommand(MyGitCommand):
     def run(self, edit, branch: str, new_name: str): # type: ignore
-        if git_root_setting(self.view) is None:
-            return
-        git_run(self.view, ["branch", "-m", branch, new_name])
-
-    def is_enabled(self):
-        root = git_root_setting(self.view)
-        return root is not None and is_valid_repo(root)
+        self.git_run(["branch", "-m", branch, new_name])
 
     def input_description(self):
         return "Rename Branch"
 
     def input(self, args):
-        if not (root := git_root_setting(self.view)):
+        if not (root := self.git_root_setting()):
             return
         if "Branch" not in args:
             return RenameBranchBranchInputHandler(root)
@@ -282,39 +270,38 @@ class RenameBranchNewNameInputHandler(sublime_plugin.TextInputHandler):
         return len(text) != 0
 
 
-class DeleteBranchCommand(sublime_plugin.TextCommand):
+class DeleteBranchCommand(MyGitCommand):
     def run(self, edit, branch: str, prompt=True, local_refs=True, remote_refs=False, tag_refs=True): # type: ignore
-        if isinstance(root := git_root_setting(self.view), str):
-            branch_name = path_to_name(branch)
-            if (
-                prompt
-                and sublime.ok_cancel_dialog(
-                    f"Delete branch {branch_name}?", "Delete", "Confirm Delete"
-                )
-                != sublime.DIALOG_YES
-            ):
-                return
-            cmd = ["branch", "-d", branch_name]
-            if branch.startswith("refs/remotes/"):
-                repo = pygit2.Repository(root)
-                if not is_branch_fully_merged(repo, branch):
-                    if sublime.ok_cancel_dialog(
-                        f"{branch_name} isn't fully merged.\nDo you want to force the deletion?\nThis will also delete the branch on the remote repository.",
-                        "Force Delete",
-                        "Confirm Force Delete",
-                    ) == sublime.DIALOG_YES:
-                        cmd = ["push", "--delete", "--", "origin", branch_name]
-            git_run(self.view, cmd)
-
-    def is_enabled(self):
-        root = git_root_setting(self.view)
-        return isinstance(root, str) and is_valid_repo(root)
+        if not (root := self.git_root_setting()):
+            return
+        branch_name = path_to_name(branch)
+        if (
+            prompt
+            and sublime.ok_cancel_dialog(
+                f"Delete branch {branch_name}?", "Delete", "Confirm Delete"
+            )
+            != sublime.DIALOG_YES
+        ):
+            return
+        cmd = ["branch", "-d", branch_name]
+        if branch.startswith("refs/remotes/"):
+            repo = pygit2.Repository(root)
+            if not is_branch_fully_merged(repo, branch):
+                if sublime.ok_cancel_dialog(
+                    branch_name + " isn't fully merged.\n\
+                    Do you want to force the deletion?\n\
+                    This will also delete the branch on the remote repository.",
+                    "Force Delete",
+                    "Confirm Force Delete",
+                ) == sublime.DIALOG_YES:
+                    cmd = ["push", "--delete", "--", "origin", branch_name]
+        self.git_run(cmd)
 
     # def input_description(self):
     #     return "Delete Branch"
 
     def input(self, args):
-        if not isinstance(root := git_root_setting(self.view), str):
+        if not (root := self.git_root_setting()):
             return
         if "branch" not in args:
             return DeleteBranchBranchInputHandler(
@@ -376,26 +363,19 @@ class OptionsInputHandler(sublime_plugin.ListInputHandler):
         return None
 
 
-class MergeBranchCommand(sublime_plugin.TextCommand):
+class MergeBranchCommand(MyGitCommand):
     def run(self, _, branch: str, options: List[str]):
-        if not isinstance(git_root_setting(self.view), str):
-            return
-
         branch_name = path_to_name(branch)
         if options[-1] == "merge":
             options = options[0:-2]
         cmd = ["merge", branch_name, *options]
-        git_run(self.view, cmd)
-
-    def is_enabled(self):
-        root = git_root_setting(self.view)
-        return isinstance(root, str) and is_valid_repo(root)
+        self.git_run(cmd)
 
     def input_description(self):
         return "Merge Branch"
 
     def input(self, args):
-        if not isinstance(root := git_root_setting(self.view), str):
+        if not (root := self.git_root_setting()):
             return
 
         if "branch" not in args:
@@ -438,14 +418,9 @@ class MergeBranchOptionsInputHandler(OptionsInputHandler):
     terminal = "merge"
 
 
-class AddRemoteCommand(sublime_plugin.TextCommand):
+class AddRemoteCommand(MyGitCommand):
     def run(self, edit, name: str, url: str): # type: ignore
-        if git_root_setting(self.view) is None:
-            return
-        git_run(self.view, ["remote", "add", name, url])
-
-    def is_enabled(self):
-        return git_root_setting(self.view) is not None
+        self.git_run(["remote", "add", name, url])
 
     def input_description(self):
         return "Add Remote"
@@ -486,19 +461,15 @@ class AddRemoteUrlInputHandler(sublime_plugin.TextInputHandler):
         return "Remote URL"
 
 
-class CreateTagCommand(sublime_plugin.TextCommand):
+class CreateTagCommand(MyGitCommand):
     def run(self, edit, name: str, message: str): # type: ignore
-        if git_root_setting(self.view):
-            git_run(self.view, ["tag", name, message])
-
-    def is_enabled(self):
-        return (root := git_root_setting(self.view)) is not None and is_valid_repo(root)
+        self.git_run(["tag", name, message])
 
     def input_description(self):
         return "Create Tag"
 
     def input(self, args):
-        if (root := git_root_setting(self.view)) is None:
+        if not (root := self.git_root_setting()):
             return
         repo = pygit2.Repository(root)
         head_commit = repo.head.peel(pygit2.Commit)
@@ -546,26 +517,21 @@ class CreateTagMessageInputHandler(sublime_plugin.TextInputHandler):
         return self.html
 
 
-class DeleteRemoteCommand(sublime_plugin.TextCommand):
+class DeleteRemoteCommand(MyGitCommand):
     def run(self, edit, remote: str, prompt=True): # type: ignore
-        if git_root_setting(self.view) is None:
-            return
         delete = True
         if prompt:
             delete = sublime.ok_cancel_dialog(
                 "Delete remote ?", "Delete", "Confirm Delete"
             )
         if delete:
-            git_run(self.view, ["remote", "remove", remote])
-
-    def is_enabled(self):
-        return (root := git_root_setting(self.view)) is not None and is_valid_repo(root)
+            self.git_run(["remote", "remove", remote])
 
     def input_description(self):
         return "Delete Remote"
 
     def input(self, args):
-        if (root := git_root_setting(self.view)) and "remote" not in args:
+        if (root := self.git_root_setting()) and "remote" not in args:
             return RemoteInputHandler(root)
 
 
@@ -584,21 +550,15 @@ class RemoteInputHandler(sublime_plugin.ListInputHandler):
         return "Remote"
 
 
-class RenameRemoteCommand(sublime_plugin.TextCommand):
+class RenameRemoteCommand(MyGitCommand):
     def run(self, _, remote: str, new_name: str):  # type: ignore
-        if not isinstance(git_root_setting(self.view), str):
-            return
-        git_run(self.view, ["remote", "rename", remote, new_name])
-
-    def is_enabled(self):
-        root = git_root_setting(self.view)
-        return isinstance(root, str) and is_valid_repo(root)
+        self.git_run(["remote", "rename", remote, new_name])
 
     def input_description(self):
         return "Rename Remote"
 
     def input(self, args):
-        if not isinstance(root := git_root_setting(self.view), str):
+        if not (root := self.git_root_setting()):
             return
         if "remote" not in args:
             return RenameRemoteRemoteInputHandler(root)
@@ -623,16 +583,11 @@ class RenameRemoteNewNameInputHandler(sublime_plugin.TextInputHandler):
         return not any(c in text for c in " ./\\:[?^*~")
 
 
-class AddSubmoduleCommand(sublime_plugin.TextCommand):
+class AddSubmoduleCommand(MyGitCommand):
     def run(self, edit, repository_path: str, submodule_name: str): # type: ignore
-        if git_root_setting(self.view):
-            git_run(
-                self.view,
-                ["submodule", "add", "--name", submodule_name, "--", repository_path],
-            )
-
-    def is_enabled(self):
-        return git_root_setting(self.view) is not None
+        self.git_run(
+            ["submodule", "add", "--name", submodule_name, "--", repository_path],
+        )
 
     def input_description(self):
         return "Add Submodule"
@@ -694,27 +649,17 @@ def get_stash_cmd(selected: List[str], text: str) -> List[str]:
     return result
 
 
-class StashCommand(sublime_plugin.TextCommand):
+class StashCommand(MyGitCommand):
     def run(self, _, options: List[str], message=""):
-        if not isinstance(git_root_setting(self.view), str):
-            return
-
         if options[-1] == "stash":
             options = options[:-2]
         cmd = get_stash_cmd(options, message)
-        git_run(self.view, cmd)
-
-    def is_enabled(self):
-        root = git_root_setting(self.view)
-        return isinstance(root, str) and is_valid_repo(root)
+        self.git_run(cmd)
 
     def input_description(self):
         return "Stash"
 
     def input(self, args):
-        if not isinstance(git_root_setting(self.view), str):
-            return
-
         if "options" not in args:
             return StashOptionsInputHandler()
 
@@ -755,63 +700,50 @@ class StashMessageInputHandler(sublime_plugin.TextInputHandler):
     def placeholder(self) -> str:
         return "Optional Message"
 
-class PopStashCommand(sublime_plugin.TextCommand):
+class PopStashCommand(MyGitCommand):
     def run(self, edit):
-        if git_root_setting(self.view):
-            git_run(self.view, ["stash", "pop"])
+        self.git_run(["stash", "pop"])
 
 
-class DropStashesCommand(sublime_plugin.TextCommand):
+class DropStashesCommand(MyGitCommand):
     def run(self, edit):
-        if git_root_setting(self.view):
-            git_run(self.view, ["stash", "drop"])
+        self.git_run(["stash", "drop"])
 
 
-class ClearStashesCommand(sublime_plugin.TextCommand):
+class ClearStashesCommand(MyGitCommand):
     def run(self, edit):
-        if git_root_setting(self.view) is None:
-            return
         msg = "This will permanently erase all stashes.\n\nAre you sure you want to continue ?"
         if sublime.ok_cancel_dialog(msg, "Clear All Stashes", "Confirm Clear Stashes"):
-            git_run(self.view, ["stash", "clear"])
+            self.git_run(["stash", "clear"])
 
 
-class StageAllCommand(sublime_plugin.TextCommand):
+class StageAllCommand(MyGitCommand):
     def run(self, edit):
-        if git_root_setting(self.view):
-            git_run(self.view, ["add", "-A"])
+        self.git_run(["add", "-A"])
 
 
-class StageAllModifiedCommand(sublime_plugin.TextCommand):
+class StageAllModifiedCommand(MyGitCommand):
     def run(self, edit):
-        if git_root_setting(self.view):
-            git_run(self.view, ["add", "-u"])
+        self.git_run(["add", "-u"])
 
 
-class UnstageAllCommand(sublime_plugin.TextCommand):
+class UnstageAllCommand(MyGitCommand):
     def run(self, edit):
-        if git_root_setting(self.view):
-            git_run(self.view, ["reset"])
+        self.git_run(["reset"])
 
 
-class FetchCommand(sublime_plugin.TextCommand):
+class FetchCommand(MyGitCommand):
     def run(self, _, mode: str, remote: str = ""):  # type: ignore
-        if not isinstance(git_root_setting(self.view), str):
-            return
         cmd = mode.split()
         if remote:
             cmd.append(remote)
-        git_run(self.view, cmd)
-
-    def is_enabled(self):
-        root = git_root_setting(self.view)
-        return isinstance(root, str) and is_valid_repo(root)
+        self.git_run(cmd)
 
     def input_description(self):
         return "Fetch"
 
     def input(self, args):
-        if not isinstance(root := git_root_setting(self.view), str):
+        if not (root := self.git_root_setting()):
             return
         if "mode" not in args:
             return FetchModeInputHandler(root)
@@ -849,24 +781,18 @@ class FetchModeInputHandler(sublime_plugin.ListInputHandler):
             return RemoteInputHandler(self.root)
 
 
-class PullCommand(sublime_plugin.TextCommand):
+class PullCommand(MyGitCommand):
     def run(self, _, mode: str, remote: str = ""):  # type: ignore
-        if not isinstance(git_root_setting(self.view), str):
-            return
         cmd = mode.split()
         if remote:
             cmd.append(remote)
-        git_run(self.view, cmd)
-
-    def is_enabled(self):
-        root = git_root_setting(self.view)
-        return isinstance(root, str) and is_valid_repo(root)
+        self.git_run(cmd)
 
     def input_description(self):
         return "Pull"
 
     def input(self, args):
-        if not isinstance(root := git_root_setting(self.view), str):
+        if not (root := self.git_root_setting()):
             return
         if "mode" not in args:
             return PullModeInputHandler(root)
@@ -890,21 +816,15 @@ class PullModeInputHandler(FetchModeInputHandler):
         if "remote" not in args and "--all" not in args["mode"] and "pull" not in args["mode"]:
             return RemoteInputHandler(self.root)
 
-class RebaseBranchCommand(sublime_plugin.TextCommand):
+class RebaseBranchCommand(MyGitCommand):
     def run(self, _, branch: str):  # type: ignore
-        if not isinstance(git_root_setting(self.view), str):
-            return
-        git_run(self.view, ["rebase", path_to_name(branch)])
-
-    def is_enabled(self):
-        root = git_root_setting(self.view)
-        return isinstance(root, str) and is_valid_repo(root)
+        self.git_run(["rebase", path_to_name(branch)])
 
     def input_description(self):
         return "Rebase Branch"
 
     def input(self, args):
-        if not isinstance(root := git_root_setting(self.view), str):
+        if not (root := self.git_root_setting()):
             return
         if "branch" not in args:
             return RebaseBranchBranchInputHandler(root)
@@ -929,9 +849,9 @@ def is_upstream(root: str, remote: str, branch: str) -> bool:
     tracking_ref = f"refs/remotes/{remote}/{branch}"
     return tracking_ref not in pygit2.Repository(root).references
 
-class PushCommand(sublime_plugin.TextCommand):
+class PushCommand(MyGitCommand):
     def run(self, _, branch: str, remote: str, mode: str, prompt=True):  # type: ignore
-        if not isinstance(root := git_root_setting(self.view), str):
+        if not (root := self.git_root_setting()):
             return
         repo = pygit2.Repository(root)
         branch_name = path_to_name(branch)
@@ -943,17 +863,13 @@ class PushCommand(sublime_plugin.TextCommand):
             ) != sublime.DIALOG_YES:
                 return
         cmd = mode.split() + [remote, branch]
-        git_run(self.view, cmd)
-
-    def is_enabled(self):
-        root = git_root_setting(self.view)
-        return isinstance(root, str) and is_valid_repo(root)
+        self.git_run(cmd)
 
     def input_description(self):
         return "Push"
 
     def input(self, args):
-        if not isinstance(root := git_root_setting(self.view), str):
+        if not (root := self.git_root_setting()):
             return
         if "branch" not in args:
             return PushBranchInputHandler(root)
