@@ -89,36 +89,40 @@ class BranchInputHandler(sublime_plugin.ListInputHandler):
     def name(self) -> str:
         return "branch"
 
+    def get_kind(self, kind):
+        if self.local_refs + self.remote_refs + self.tag_refs == 1:
+            return sublime.KIND_AMBIGUOUS
+        else:
+            return kind
+
     def list_items(self):
         repo = pygit2.Repository(self.root)
         active_path = _active_branch_path(repo)
 
         items: List[sublime.ListInputItem] = []
-        i = 0
         if self.local_refs:
-            for j, head in enumerate(iter_refs(self.root, "heads")):
-                if active_path and head == active_path:
-                    i = j
-                    if not self.include_active_branch:
-                        continue
+            kind = self.get_kind(self.KIND_LOCAL)
+            for head in iter_refs(self.root, "heads"):
+                if active_path and head == active_path and not self.include_active_branch:
+                    continue
                 items.append(
-                    sublime.ListInputItem(
-                        path_to_name(head), head, kind=self.KIND_LOCAL
-                    )
+                    sublime.ListInputItem(path_to_name(head), head, kind=kind)
                 )
         if self.remote_refs:
+            kind = self.get_kind(self.KIND_REMOTE)
             items.extend(
-                sublime.ListInputItem(path_to_name(ref), ref, kind=self.KIND_REMOTE)
+                sublime.ListInputItem(path_to_name(ref), ref, kind=kind)
                 for ref in iter_refs(self.root, "remotes")
                 if ref[-4:] != "HEAD"
             )
         if self.tag_refs:
+            kind = self.get_kind(self.KIND_TAG)
             items.extend(
-                sublime.ListInputItem(path_to_name(tag), tag, kind=self.KIND_TAG)
+                sublime.ListInputItem(path_to_name(tag), tag, kind=kind)
                 for tag in iter_refs(self.root, "tags")
             )
 
-        return (items, i)
+        return (items, 0)
 
     def placeholder(self) -> str:
         return "Branch or Tag Name"
