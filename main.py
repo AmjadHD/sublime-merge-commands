@@ -4,7 +4,7 @@ import sublime_plugin
 from typing import List, Optional, Set, Dict
 import time
 import os
-os.add_dll_directory(r"C:\Users\Lehdhili\AppData\Roaming\Sublime Text\Lib\python38\python3dll")
+os.add_dll_directory("C:\\MyDLLs") # python3.dll is not shipped with sublime text.
 import pygit2  # noqa: E402
 from .utils.utils import git_root, active_branch_path, can_fast_forward, is_branch_fully_merged, is_valid_repo, iter_refs, name_to_path, path_to_name  # noqa: E402
 
