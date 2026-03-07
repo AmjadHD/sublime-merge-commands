@@ -2,6 +2,7 @@ import sublime
 import sublime_plugin
 
 from typing import List, Optional, Set, Dict
+import time
 import os
 os.add_dll_directory(r"C:\Users\Lehdhili\AppData\Roaming\Sublime Text\Lib\python38\python3dll")
 import pygit2  # noqa: E402
@@ -19,11 +20,16 @@ class MyGitCommand(sublime_plugin.TextCommand):
             w.run_command("exec", {"cmd": cmd})
 
     def git_root_setting(self) -> Optional[str]:
+        _GIT_ROOT_TTL = 60.0
         settings = self.view.settings()
-        if "git_root" not in settings:
+        now = time.monotonic()
+
+        if "git_root" not in settings or now - settings.get("git_root_ts", 0) > _GIT_ROOT_TTL:  # type: ignore
             settings["git_root"] = git_root(
                 self.view.window().extract_variables().get("file_path", "")  # type: ignore
             )
+            settings["git_root_ts"] = now
+
         result = settings["git_root"]
         if isinstance(result, str) or result is None:
             return result
