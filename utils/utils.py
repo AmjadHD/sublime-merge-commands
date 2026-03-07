@@ -15,6 +15,13 @@ def path_to_name(ref_path: str) -> str:
     return parts[2] if len(parts) == 3 else ref_path
 
 
+def active_branch_path(repo: pygit2.Repository) -> Optional[str]:
+    """Return the full ref path of the current branch, or None if HEAD is detached."""
+    if repo.head_is_detached:
+        return None
+    return repo.head.name  # e.g. "refs/heads/main"
+
+
 def is_valid_repo(path: str) -> bool:
     try:
         pygit2.Repository(path)

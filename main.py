@@ -5,7 +5,7 @@ from typing import List, Optional, Set, Dict
 import os
 os.add_dll_directory(r"C:\Users\Lehdhili\AppData\Roaming\Sublime Text\Lib\python38\python3dll")
 import pygit2  # noqa: E402
-from .utils.utils import git_root, can_fast_forward, is_branch_fully_merged, is_valid_repo, iter_refs, name_to_path, path_to_name  # noqa: E402
+from .utils.utils import git_root, active_branch_path, can_fast_forward, is_branch_fully_merged, is_valid_repo, iter_refs, name_to_path, path_to_name  # noqa: E402
 
 
 class MyGitCommand(sublime_plugin.TextCommand):
@@ -31,48 +31,6 @@ class MyGitCommand(sublime_plugin.TextCommand):
             raise ValueError("git_root setting must be a string or null")
 
 
-class CheckoutBranchCommand(MyGitCommand):
-    def run( # type: ignore
-        self, edit, branch: str, create_branch=False, new_name: Optional[str] = None
-    ):
-        if not create_branch or branch.startswith("refs/heads"):
-            new_name = None
-        cmd = ["checkout"]
-        if new_name:
-            cmd.append("-b")
-            cmd.append(new_name)
-        cmd.append(path_to_name(branch))
-        self.git_run(cmd)
-
-    def input_description(self):
-        return "Checkout"
-
-    def input(self, args):
-        if not (root := self.git_root_setting()):
-            return
-        if "branch" not in args:
-            return BranchInputHandler(
-                root,
-                args.get("local_refs", True),
-                args.get("remote_refs", True),
-                args.get("tag_refs", True),
-            )
-        path = name_to_path(pygit2.Repository(root), args["branch"])
-        if path is not None and not path.startswith("refs/heads"):
-            args["branch"] = path
-            if "create_branch" not in args:
-                return CheckoutBranchCreateBranchInputHandler(args["branch"])
-            if args["create_branch"] is True and not args.get("new_name"):
-                return CheckoutBranchNewNameInputHandler(args["branch"])
-
-
-def _active_branch_path(repo: pygit2.Repository) -> Optional[str]:
-    """Return the full ref path of the current branch, or None if HEAD is detached."""
-    if repo.head_is_detached:
-        return None
-    return repo.head.name  # e.g. "refs/heads/main"
-
-
 class BranchInputHandler(sublime_plugin.ListInputHandler):
     KIND_LOCAL = (sublime.KindId.COLOR_BLUISH, "L", "Local Branch")
     KIND_REMOTE = (sublime.KindId.COLOR_PURPLISH, "R", "Remote Branch")
@@ -96,7 +54,7 @@ class BranchInputHandler(sublime_plugin.ListInputHandler):
 
     def list_items(self):
         repo = pygit2.Repository(self.root)
-        active_path = _active_branch_path(repo)
+        active_path = active_branch_path(repo)
 
         items: List[sublime.ListInputItem] = []
         if self.local_refs:
@@ -126,6 +84,43 @@ class BranchInputHandler(sublime_plugin.ListInputHandler):
     def placeholder(self) -> str:
         return "Branch or Tag Name"
 
+
+class CheckoutBranchCommand(MyGitCommand):
+    def run( # type: ignore
+        self, edit, branch: str, create_branch=False, new_name: Optional[str] = None
+    ):
+        if not create_branch or branch.startswith("refs/heads"):
+            new_name = None
+        cmd = ["checkout"]
+        if new_name:
+            cmd.append("-b")
+            cmd.append(new_name)
+        cmd.append(path_to_name(branch))
+        self.git_run(cmd)
+
+    def input_description(self):
+        return "Checkout"
+
+    def input(self, args):
+        if not (root := self.git_root_setting()):
+            return
+        if "branch" not in args:
+            return CheckoutBranchBranchInputHandler(
+                root,
+                args.get("local_refs", True),
+                args.get("remote_refs", True),
+                args.get("tag_refs", True),
+            )
+        path = name_to_path(pygit2.Repository(root), args["branch"])
+        if path is not None and not path.startswith("refs/heads"):
+            args["branch"] = path
+            if "create_branch" not in args:
+                return CheckoutBranchCreateBranchInputHandler(args["branch"])
+            if args["create_branch"] is True and not args.get("new_name"):
+                return CheckoutBranchNewNameInputHandler(args["branch"])
+
+
+class CheckoutBranchBranchInputHandler(BranchInputHandler):
     def next_input(self, args):
         if args["branch"].startswith("refs/heads"):
             return None
@@ -228,7 +223,7 @@ class RenameBranchBranchInputHandler(sublime_plugin.ListInputHandler):
 
     def list_items(self):
         repo = pygit2.Repository(self.root)
-        active_path = _active_branch_path(repo)
+        active_path = active_branch_path(repo)
 
         items: List[str] = []
         i = 0
