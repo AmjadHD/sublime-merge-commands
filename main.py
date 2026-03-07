@@ -366,6 +366,10 @@ class MergeBranchCommand(MyGitCommand):
         cmd = ["merge", branch_name, *options]
         self.git_run(cmd)
 
+    def is_enabled(self):
+        root = self.git_root_setting()
+        return root is not None and is_valid_repo(root) and not pygit2.Repository(root).head_is_detached
+
     def input_description(self):
         return "Merge Branch"
 
@@ -383,14 +387,14 @@ class MergeBranchBranchInputHandler(BranchInputHandler):
         super().__init__(root, local_refs=True, remote_refs=True, tag_refs=True, include_active_branch=False)
         repo = pygit2.Repository(self.root)
         # active_branch is the short name (e.g. "main"); fall back to detached HEAD OID
-        self.active_branch = str(repo.head.target)[:7] if repo.head_is_detached else repo.head.shorthand
+        self.active_branch_name = repo.head.shorthand
 
     def placeholder(self) -> str:
         return "Branch Name"
 
     def preview(self, text: str) -> str:
         branch_name = path_to_name(text)
-        return f"Merge {branch_name} into {self.active_branch}"
+        return f"Merge {branch_name} into {self.active_branch_name}"
 
     def next_input(self, args):
         if "options" not in args:
