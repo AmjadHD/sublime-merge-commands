@@ -6,7 +6,7 @@ import time
 import os
 os.add_dll_directory("C:\\MyDLLs") # python3.dll is not shipped with sublime text.
 import pygit2  # noqa: E402
-from .utils.utils import git_root, active_branch_path, can_fast_forward, is_branch_fully_merged, is_valid_repo, iter_refs, name_to_path, path_to_name  # noqa: E402
+from .utils.utils import git_root, is_upstream, active_branch_path, can_fast_forward, is_branch_fully_merged, is_valid_repo, iter_refs, name_to_path, path_to_name  # noqa: E402
 
 
 class MyGitCommand(sublime_plugin.TextCommand):
@@ -42,7 +42,7 @@ class BranchInputHandler(sublime_plugin.ListInputHandler):
     KIND_REMOTE = (sublime.KindId.COLOR_PURPLISH, "R", "Remote Branch")
     KIND_TAG = (sublime.KindId.COLOR_YELLOWISH, "T", "Tag")
 
-    def __init__(self, root: str, local_refs: bool, remote_refs: bool, tag_refs: bool, include_active_branch=True):
+    def __init__(self, root: str, local_refs=True, remote_refs=True, tag_refs=True, include_active_branch=True):
         self.root = root
         self.local_refs = local_refs
         self.remote_refs = remote_refs
@@ -63,11 +63,15 @@ class BranchInputHandler(sublime_plugin.ListInputHandler):
         active_path = active_branch_path(repo)
 
         items: List[sublime.ListInputItem] = []
+        i = 0
         if self.local_refs:
             kind = self.get_kind(self.KIND_LOCAL)
-            for head in iter_refs(self.root, "heads"):
-                if active_path and head == active_path and not self.include_active_branch:
-                    continue
+            for j, head in enumerate(iter_refs(self.root, "heads")):
+                if active_path and head == active_path:
+                    if self.include_active_branch:
+                        i = j
+                    else:
+                        continue
                 items.append(
                     sublime.ListInputItem(path_to_name(head), head, kind=kind)
                 )
@@ -85,7 +89,7 @@ class BranchInputHandler(sublime_plugin.ListInputHandler):
                 for tag in iter_refs(self.root, "tags")
             )
 
-        return (items, 0)
+        return (items, i)
 
     def placeholder(self) -> str:
         return "Branch or Tag Name"
@@ -144,9 +148,9 @@ class CheckoutBranchCreateBranchInputHandler(sublime_plugin.ListInputHandler):
         return "create_branch"
 
     def list_items(self):
-        branch = "remote branch" if self.branch.startswith("refs/remotes") else "tag"
+        source = "remote branch" if self.branch.startswith("refs/remotes") else "tag"
         return [
-            sublime.ListInputItem("Check out commit on " + branch, False, annotation="(runs git checkout)"),
+            sublime.ListInputItem("Check out commit on " + source, False, annotation="(runs git checkout)"),
             sublime.ListInputItem("Create local branch", True, annotation="(runs git checkout -b)"),
         ]
 
@@ -206,7 +210,8 @@ class CreateBranchNameInputHandler(sublime_plugin.TextInputHandler):
 
 class RenameBranchCommand(MyGitCommand):
     def run(self, edit, branch: str, new_name: str): # type: ignore
-        self.git_run(["branch", "-m", branch, new_name])
+        shorthand = path_to_name(branch) if branch.startswith("refs/") else branch
+        self.git_run(["branch", "-m", shorthand, new_name])
 
     def input_description(self):
         return "Rename Branch"
@@ -215,31 +220,12 @@ class RenameBranchCommand(MyGitCommand):
         if not (root := self.git_root_setting()):
             return
         if "Branch" not in args:
-            return RenameBranchBranchInputHandler(root)
+            return RenameBranchBranchInputHandler(root, remote_refs=False, tag_refs=False)
         if "new_name" not in args:
             return RenameBranchNewNameInputHandler(args["branch"])
 
 
-class RenameBranchBranchInputHandler(sublime_plugin.ListInputHandler):
-    def __init__(self, root: str):
-        self.root = root
-
-    def name(self):
-        return "branch"
-
-    def list_items(self):
-        repo = pygit2.Repository(self.root)
-        active_path = active_branch_path(repo)
-
-        items: List[str] = []
-        i = 0
-        for j, head in enumerate(iter_refs(self.root, "heads")):
-            if active_path and head == active_path:
-                i = j
-            items.append(path_to_name(head))
-
-        return (items, i)
-
+class RenameBranchBranchInputHandler(BranchInputHandler):
     def placeholder(self):
         return "Branch to Rename"
 
@@ -272,7 +258,7 @@ class RenameBranchNewNameInputHandler(sublime_plugin.TextInputHandler):
 
 
 class DeleteBranchCommand(MyGitCommand):
-    def run(self, edit, branch: str, prompt=True, local_refs=True, remote_refs=False, tag_refs=True): # type: ignore
+    def run(self, edit, branch: str, prompt=True): # type: ignore
         if not (root := self.git_root_setting()):
             return
         branch_name = path_to_name(branch)
@@ -298,24 +284,19 @@ class DeleteBranchCommand(MyGitCommand):
                     cmd = ["push", "--delete", "--", "origin", branch_name]
         self.git_run(cmd)
 
-    # def input_description(self):
-    #     return "Delete Branch"
+    def input_description(self):
+        return "Delete Branch"
 
     def input(self, args):
         if not (root := self.git_root_setting()):
             return
         if "branch" not in args:
-            return DeleteBranchBranchInputHandler(
+            return BranchInputHandler(
                 root,
                 args.get("local_refs", True),
                 args.get("remote_refs", False),
                 args.get("tag_refs", True),
             )
-
-
-class DeleteBranchBranchInputHandler(BranchInputHandler):
-    def next_input(self, args):
-        return None
 
 
 class OptionsInputHandler(sublime_plugin.ListInputHandler):
@@ -641,11 +622,9 @@ class AddSubmoduleSubmoduleNameInputHandler(sublime_plugin.TextInputHandler):
     def preview(self, text: str):
         return "The name that will be stored in the .gitmodules file"
 
-def stash_subcommand(selected: List[str]) -> str:
-    return "push" if any(f in ('--include-untracked', '--keep-index') for f in selected) else "save"
 
 def get_stash_cmd(selected: List[str], text: str) -> List[str]:
-    subcommand = stash_subcommand(selected)
+    subcommand = "push" if '--include-untracked' in selected or '--keep-index' in selected else "save"
     result = ["stash", subcommand, *selected]
     if text:
         if subcommand == "push":
@@ -682,7 +661,6 @@ class StashOptionsInputHandler(OptionsInputHandler):
     excludes = {
         "--include-untracked": {"--staged"},
         "--staged":            {"--include-untracked"},
-        "--keep-index":        set(),
     }
     terminal = "stash"
 
@@ -694,7 +672,6 @@ class StashOptionsInputHandler(OptionsInputHandler):
 class StashMessageInputHandler(sublime_plugin.TextInputHandler):
     def __init__(self, selected: List[str]) -> None:
         self.selected = selected
-        self.subcommand = stash_subcommand(selected)
 
     def name(self) -> str:
         return "message"
@@ -704,6 +681,7 @@ class StashMessageInputHandler(sublime_plugin.TextInputHandler):
 
     def placeholder(self) -> str:
         return "Optional Message"
+
 
 class PopStashCommand(MyGitCommand):
     def run(self, edit):
@@ -821,6 +799,7 @@ class PullModeInputHandler(FetchModeInputHandler):
         if "remote" not in args and "--all" not in args["mode"] and "pull" not in args["mode"]:
             return RemoteInputHandler(self.root)
 
+
 class RebaseBranchCommand(MyGitCommand):
     def run(self, _, branch: str):  # type: ignore
         self.git_run(["rebase", path_to_name(branch)])
@@ -850,9 +829,6 @@ class RebaseBranchBranchInputHandler(BranchInputHandler):
     def next_input(self, args):
         return None
 
-def is_upstream(root: str, remote: str, branch: str) -> bool:
-    tracking_ref = f"refs/remotes/{remote}/{branch}"
-    return tracking_ref not in pygit2.Repository(root).references
 
 class PushCommand(MyGitCommand):
     def run(self, _, branch: str, remote: str, mode: str, prompt=True):  # type: ignore
@@ -877,7 +853,7 @@ class PushCommand(MyGitCommand):
         if not (root := self.git_root_setting()):
             return
         if "branch" not in args:
-            return PushBranchInputHandler(root)
+            return PushBranchInputHandler(root, remote_refs=False, tag_refs=False)
         if "remote" not in args:
             return PushRemoteInputHandler(root)
         if "mode" not in args:
@@ -885,12 +861,6 @@ class PushCommand(MyGitCommand):
 
 
 class PushBranchInputHandler(BranchInputHandler):
-    def __init__(self, root: str) -> None:
-        super().__init__(root, local_refs=True, remote_refs=False, tag_refs=False)
-
-    def name(self) -> str:
-        return "branch"
-
     def placeholder(self) -> str:
         return "Source Branch"
 

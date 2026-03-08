@@ -52,6 +52,11 @@ def _is_ancestor(repo: pygit2.Repository, ancestor_oid: pygit2.Oid, descendant_o
     return merge_base == ancestor_oid
 
 
+def is_upstream(root: str, remote: str, branch: str) -> bool:
+    tracking_ref = f"refs/remotes/{remote}/{branch}"
+    return tracking_ref not in pygit2.Repository(root).references
+
+
 def is_branch_fully_merged(repo: pygit2.Repository, branch: str) -> bool:
     try:
         base_commit = repo.references["refs/remotes/origin/HEAD"].resolve().peel(pygit2.Commit)
