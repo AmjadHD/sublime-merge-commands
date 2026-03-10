@@ -901,3 +901,30 @@ class PushModeInputHandler(sublime_plugin.ListInputHandler):
             sublime.ListInputItem(mode, mode, annotation=annotation)
             for mode, annotation in self.modes.items()
         ]
+
+
+class DeleteTagCommand(MyGitCommand):
+    def run(self, edit, ref: str, prompt=True):  # type: ignore
+        tag_name = path_to_name(ref)
+        if prompt and sublime.ok_cancel_dialog(
+            f"Delete tag {tag_name}?", "Delete", "Confirm Delete"
+            ) != sublime.DIALOG_YES:
+            return
+        self.git_run(["tag", "-d", tag_name])
+
+    def input_description(self) -> str:
+        return "Delete Tag"
+
+    def input(self, args):
+        if not (root := self.git_root_setting()):
+            return
+        if "ref" not in args:
+            return DeleteTagRefInputHandler(root, local_refs=False, remote_refs=False)
+
+
+class DeleteTagRefInputHandler(BranchInputHandler):
+    def name(self):
+        return "ref"
+
+    def placeholder(self) -> str:
+        return "Tag Name"

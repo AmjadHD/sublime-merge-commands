@@ -106,4 +106,8 @@
         "caption": "MyGit: Unstage All\tgit reset",
         "command": "unstage_all",
     },
+    {
+        "caption": "MyGit: Delete Tag…",
+        "command": "delete_tag"
+    },
 ]
