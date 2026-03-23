@@ -110,4 +110,84 @@
         "caption": "MyGit: Delete Tag…",
         "command": "delete_tag"
     },
+    {
+        "caption": "Git Flow: Initialize",
+        "command": "init_gitflow",
+    },
+    {
+        "caption": "Git Flow: Configure",
+        "command": "edit_gitflow_config",
+    },
+    {
+        "caption": "Git Flow: Start Feature Branch",
+        "command": "gitflow_start_feature",
+    },
+    {
+        "caption": "Git Flow: Start Bugfix Branch",
+        "command": "gitflow_start_bugfix",
+    },
+    {
+        "caption": "Git Flow: Start Release Branch",
+        "command": "gitflow_start_release",
+    },
+    {
+        "caption": "Git Flow: Start Hotfix Branch",
+        "command": "gitflow_start_hotfix",
+    },
+    {
+        "caption": "Git Flow: Start Support Branch",
+        "command": "gitflow_start_support",
+    },
+    {
+        "caption": "Git Flow: Finish Feature Branch",
+        "command": "gitflow_finish_feature",
+    },
+    {
+        "caption": "Git Flow: Finish Bugfix Branch",
+        "command": "gitflow_finish_bugfix",
+    },
+    {
+        "caption": "Git Flow: Finish Release Branch",
+        "command": "gitflow_finish_release",
+    },
+    {
+        "caption": "Git Flow: Finish Hotfix Branch",
+        "command": "gitflow_finish_hotfix",
+    },
+    {
+        "caption": "Git Flow: Publish Feature Branch",
+        "command": "gitflow_publish_feature",
+    },
+    {
+        "caption": "Git Flow: Publish Bugfix Branch",
+        "command": "gitflow_publish_bugfix",
+    },
+    {
+        "caption": "Git Flow: Publish Release Branch",
+        "command": "gitflow_publish_release",
+    },
+    {
+        "caption": "Git Flow: Publish Hotfix Branch",
+        "command": "gitflow_publish_hotfix",
+    },
+    {
+        "caption": "Git Flow: Rebase Feature Branch",
+        "command": "gitflow_rebase_feature",
+    },
+    {
+        "caption": "Git Flow: Rebase Bugfix Branch",
+        "command": "gitflow_rebase_bugfix",
+    },
+    {
+        "caption": "Git Flow: Rebase Release Branch",
+        "command": "gitflow_rebase_release",
+    },
+    {
+        "caption": "Git Flow: Rebase Hotfix Branch",
+        "command": "gitflow_rebase_hotfix",
+    },
+    {
+        "caption": "Git Flow: Rebase Support Branch",
+        "command": "gitflow_rebase_support",
+    },
 ]

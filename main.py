@@ -928,3 +928,113 @@ class DeleteTagRefInputHandler(BranchInputHandler):
 
     def placeholder(self) -> str:
         return "Tag Name"
+
+# ── GitFlow ───────────────────────────────────────────────────────────────────
+
+class GitflowStartNameInputHandler(sublime_plugin.TextInputHandler):
+    def name(self):
+        return "name"
+
+    def placeholder(self):
+        return "Branch Name"
+
+    def validate(self, text: str, event=None):
+        return len(text) != 0
+
+
+class GitflowStartCommand(MyGitCommand):
+    flow_type: str
+
+    def run(self, edit, name: str):  # type: ignore
+        self.git_run(["flow", self.flow_type, "start", name])
+
+    def input_description(self):
+        return f"Gitflow: Start {self.flow_type.capitalize()}"
+
+    def input(self, args):
+        if "name" not in args:
+            return GitflowStartNameInputHandler()
+
+
+class GitflowSimpleCommand(MyGitCommand):
+    flow_type: str
+    flow_action: str
+
+    def run(self, edit):  # type: ignore
+        self.git_run(["flow", self.flow_type, self.flow_action])
+
+
+# start
+
+class GitflowStartBugfixCommand(GitflowStartCommand):
+    flow_type = "bugfix"
+
+class GitflowStartFeatureCommand(GitflowStartCommand):
+    flow_type = "feature"
+
+class GitflowStartHotfixCommand(GitflowStartCommand):
+    flow_type = "hotfix"
+
+class GitflowStartReleaseCommand(GitflowStartCommand):
+    flow_type = "release"
+
+class GitflowStartSupportCommand(GitflowStartCommand):
+    flow_type = "support"
+
+# finish
+
+class GitflowFinishBugfixCommand(GitflowSimpleCommand):
+    flow_type = "bugfix"
+    flow_action = "finish"
+
+class GitflowFinishFeatureCommand(GitflowSimpleCommand):
+    flow_type = "feature"
+    flow_action = "finish"
+
+class GitflowFinishHotfixCommand(GitflowSimpleCommand):
+    flow_type = "hotfix"
+    flow_action = "finish"
+
+class GitflowFinishReleaseCommand(GitflowSimpleCommand):
+    flow_type = "release"
+    flow_action = "finish"
+
+# publish
+
+class GitflowPublishBugfixCommand(GitflowSimpleCommand):
+    flow_type = "bugfix"
+    flow_action = "publish"
+
+class GitflowPublishFeatureCommand(GitflowSimpleCommand):
+    flow_type = "feature"
+    flow_action = "publish"
+
+class GitflowPublishHotfixCommand(GitflowSimpleCommand):
+    flow_type = "hotfix"
+    flow_action = "publish"
+
+class GitflowPublishReleaseCommand(GitflowSimpleCommand):
+    flow_type = "release"
+    flow_action = "publish"
+
+# rebase
+
+class GitflowRebaseBugfixCommand(GitflowSimpleCommand):
+    flow_type = "bugfix"
+    flow_action = "rebase"
+
+class GitflowRebaseFeatureCommand(GitflowSimpleCommand):
+    flow_type = "feature"
+    flow_action = "rebase"
+
+class GitflowRebaseHotfixCommand(GitflowSimpleCommand):
+    flow_type = "hotfix"
+    flow_action = "rebase"
+
+class GitflowRebaseReleaseCommand(GitflowSimpleCommand):
+    flow_type = "release"
+    flow_action = "rebase"
+
+class GitflowRebaseSupportCommand(GitflowSimpleCommand):
+    flow_type = "support"
+    flow_action = "rebase"
