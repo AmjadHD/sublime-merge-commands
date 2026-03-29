@@ -931,6 +931,153 @@ class DeleteTagRefInputHandler(BranchInputHandler):
 
 # ── GitFlow ───────────────────────────────────────────────────────────────────
 
+_GITFLOW_INIT_FIELDS = {
+    "master":             ("Master Branch", "gitflow.branch.master", "master"),
+    "develop":            ("Development Branch", "gitflow.branch.develop", "develop"),
+    "feature_prefix":     ("Feature Branch Prefix", "gitflow.prefix.feature", "feature/"),
+    "bugfix_prefix":      ("Bugfix Branch Prefix", "gitflow.prefix.bugfix", "bugfix/"),
+    "release_prefix":     ("Release Branch Prefix", "gitflow.prefix.release", "release/"),
+    "hotfix_prefix":      ("Hotfix Branch Prefix", "gitflow.prefix.hotfix", "hotfix/"),
+    "support_prefix":     ("Support Branch Prefix", "gitflow.prefix.support", "support/"),
+    "version_tag_prefix": ("Version Tag Prefix", "gitflow.prefix.versiontag", ""),
+    "hooks_path":         ("Git Hooks Path", "gitflow.path.hooks", ".git/hooks"),
+}
+
+def _gitflow_is_initialized(root: str) -> bool:
+    try:
+        return "gitflow.branch.master" in pygit2.Repository(root).config
+    except pygit2.GitError:
+        return False
+
+
+def _gitflow_current_configs(root: str) -> Dict[str, str]:
+    try:
+        repo_config = pygit2.Repository(root).config
+        return {
+            key: repo_config[config_key] if config_key in repo_config else default
+            for key, (_, config_key, default) in _GITFLOW_INIT_FIELDS.items()
+        }
+    except pygit2.GitError:
+        return {key: default for key, (_, _, default) in _GITFLOW_INIT_FIELDS.items()}
+
+
+class GitflowConfigCommandBase(MyGitCommand):
+    def _apply_configs(self, configs: dict):
+        for key, (_, config_key, _) in _GITFLOW_INIT_FIELDS.items():
+            self.git_run(["config", config_key, configs[key]])
+
+    def input(self, args):
+        if not (root := self.git_root_setting()):
+            return
+        if isinstance(args.get("configs"), dict):
+            configs = args.get("configs")
+        else:
+            configs = _gitflow_current_configs(root)
+        return GitflowConfigsInputHandler(configs, self.name())
+
+
+class InitGitflowCommand(GitflowConfigCommandBase):
+    def run(self, edit, configs):  # type: ignore
+        if not isinstance(configs, dict):
+            return
+        self._apply_configs(configs)
+        self.git_run(["checkout", "-b", configs["master"], f"origin/{configs['master']}"])
+        self.git_run(["checkout", "-b", configs["develop"], configs["master"]])
+
+    def is_enabled(self):
+        if not (root := self.git_root_setting()):
+            return False
+        return not _gitflow_is_initialized(root)
+
+    def input_description(self):
+        return "Initialize Git Flow"
+
+
+class EditGitflowConfigCommand(GitflowConfigCommandBase):
+    def run(self, edit, configs):  # type: ignore
+        if not isinstance(configs, dict):
+            return
+        self._apply_configs(configs)
+
+    def is_enabled(self):
+        if not (root := self.git_root_setting()):
+            return False
+        return _gitflow_is_initialized(root)
+
+    def input_description(self):
+        return "Configure Git Flow"
+
+
+class GitflowConfigsInputHandler(sublime_plugin.ListInputHandler):
+    def __init__(self, configs: Dict[str, str], command_name: str):
+        self.configs = configs
+        self.command_name = command_name
+
+    def name(self):
+        return "configs"
+
+    def placeholder(self):
+        return "Edit Git Flow Configuration"
+
+    def list_items(self):
+        return [
+            sublime.ListInputItem(
+                "Initialize" if "init" in self.command_name else "Update",
+                self.configs,
+                annotation="Runs git config commands",
+            ),
+            *(
+                sublime.ListInputItem(
+                    label,
+                    key,
+                    annotation=self.configs[key],
+                )
+                for key, (label, _, _) in _GITFLOW_INIT_FIELDS.items()
+            ),
+        ]
+
+    def next_input(self, args):
+        if isinstance(args["configs"], dict):
+            return None
+        return GitflowEditValueInputHandler(args["configs"], self.configs, self.command_name)
+
+
+class GitflowEditValueInputHandler(sublime_plugin.TextInputHandler):
+    def __init__(self, key: str, configs: Dict[str, str], command_name: str):
+        self.key = key
+        self.configs = configs
+        self.command_name = command_name
+
+    def name(self):
+        return "configs"
+
+    def placeholder(self):
+        return _GITFLOW_INIT_FIELDS[self.key][0]
+
+    def initial_text(self):
+        return self.configs[self.key]
+
+    def initial_selection(self):
+        return [(0, len(self.configs[self.key]))]
+
+    def preview(self, text: str):
+        return f"Set {_GITFLOW_INIT_FIELDS[self.key][0]} to: {text}"
+
+    def validate(self, text: str, event=None):
+        return len(text) != 0 or self.key == "version_tag_prefix"
+
+    def confirm(self, value: str, event=None):
+        updated = {**self.configs, self.key: value}
+        sublime.set_timeout(lambda: sublime.active_window().run_command(
+            "show_overlay",
+            {
+                "overlay": "command_palette",
+                "command": self.command_name,
+                "args": {"configs": updated},
+            }
+        ))
+
+
 class GitflowStartNameInputHandler(sublime_plugin.TextInputHandler):
     def name(self):
         return "name"
