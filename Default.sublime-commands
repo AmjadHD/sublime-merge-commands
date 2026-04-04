@@ -115,6 +115,10 @@
         "args": { "prompt": false }
     },
     {
+        "caption": "MyGit: Apply Patch…",
+        "command": "apply_patch",
+    },
+    {
         "caption": "Git Flow: Initialize",
         "command": "init_gitflow",
     },

@@ -956,6 +956,18 @@ class DeleteTagOnRemoteRefInputHandler(DeleteTagRefInputHandler):
         if "remote" not in args:
             return RemoteInputHandler(self.root)
 
+
+class ApplyPatchCommand(MyGitCommand):
+    def run(self, edit):
+        def on_select(path: Optional[str]):
+            if path is not None:
+                self.git_run(["apply", path])
+
+        sublime.open_dialog(
+            on_select,
+            file_types=[("Patch Files", ["patch", "diff"])],
+        )
+
 # ── GitFlow ───────────────────────────────────────────────────────────────────
 
 _GITFLOW_INIT_FIELDS = {
