@@ -929,6 +929,33 @@ class DeleteTagRefInputHandler(BranchInputHandler):
     def placeholder(self) -> str:
         return "Tag Name"
 
+
+class DeleteTagOnRemoteCommand(MyGitCommand):
+    def run(self, edit, ref: str, remote: str, prompt=True):  # type: ignore
+        tag_name = path_to_name(ref)
+        if prompt and sublime.ok_cancel_dialog(
+            f"Delete tag {tag_name} on {remote}?", "Delete", "Confirm Delete"
+        ) != sublime.DIALOG_YES:
+            return
+        self.git_run(["push", remote, "--delete", tag_name])
+
+    def input_description(self) -> str:
+        return "Delete Tag on Remote"
+
+    def input(self, args):
+        if not (root := self.git_root_setting()):
+            return
+        if "ref" not in args:
+            return DeleteTagOnRemoteRefInputHandler(root, local_refs=False, remote_refs=False)
+        if "remote" not in args:
+            return RemoteInputHandler(root)
+
+
+class DeleteTagOnRemoteRefInputHandler(DeleteTagRefInputHandler):
+    def next_input(self, args):
+        if "remote" not in args:
+            return RemoteInputHandler(self.root)
+
 # ── GitFlow ───────────────────────────────────────────────────────────────────
 
 _GITFLOW_INIT_FIELDS = {

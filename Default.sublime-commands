@@ -109,6 +109,10 @@
     {
         "caption": "MyGit: Delete Tag…",
         "command": "delete_tag"
+    {
+        "caption": "MyGit: Delete Remote Tag…",
+        "command": "delete_tag_on_remote",
+        "args": { "prompt": false }
     },
     {
         "caption": "Git Flow: Initialize",
