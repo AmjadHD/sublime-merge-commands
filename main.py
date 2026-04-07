@@ -42,7 +42,7 @@ class BranchInputHandler(sublime_plugin.ListInputHandler):
     KIND_REMOTE = (sublime.KindId.COLOR_PURPLISH, "R", "Remote Branch")
     KIND_TAG = (sublime.KindId.COLOR_YELLOWISH, "T", "Tag")
 
-    def __init__(self, root: str, local_refs=True, remote_refs=True, tag_refs=True, include_active_branch=True):
+    def __init__(self, root: str, local_refs=False, remote_refs=False, tag_refs=False, include_active_branch=True):
         self.root = root
         self.local_refs = local_refs
         self.remote_refs = remote_refs
@@ -220,7 +220,7 @@ class RenameBranchCommand(MyGitCommand):
         if not (root := self.git_root_setting()):
             return
         if "Branch" not in args:
-            return RenameBranchBranchInputHandler(root, remote_refs=False, tag_refs=False)
+            return RenameBranchBranchInputHandler(root, local_refs=True)
         if "new_name" not in args:
             return RenameBranchNewNameInputHandler(args["branch"])
 
@@ -371,7 +371,7 @@ class MergeBranchCommand(MyGitCommand):
 
 class MergeBranchBranchInputHandler(BranchInputHandler):
     def __init__(self, root: str):
-        super().__init__(root, local_refs=True, remote_refs=True, tag_refs=True, include_active_branch=False)
+        super().__init__(root, local_refs=True, remote_refs=True, include_active_branch=False)
         repo = pygit2.Repository(self.root)
         # active_branch is the short name (e.g. "main"); fall back to detached HEAD OID
         self.active_branch_name = repo.head.shorthand
@@ -816,7 +816,7 @@ class RebaseBranchCommand(MyGitCommand):
 
 class RebaseBranchBranchInputHandler(BranchInputHandler):
     def __init__(self, root: str):
-        super().__init__(root, local_refs=True, remote_refs=True, tag_refs=False)
+        super().__init__(root, local_refs=True, remote_refs=True)
         repo = pygit2.Repository(root)
         self.current = repo.head.shorthand if not repo.head_is_detached else str(repo.head.target)[:7]
 
@@ -853,7 +853,7 @@ class PushCommand(MyGitCommand):
         if not (root := self.git_root_setting()):
             return
         if "branch" not in args:
-            return PushBranchInputHandler(root, remote_refs=False, tag_refs=False)
+            return PushBranchInputHandler(root, local_refs=True)
         if "remote" not in args:
             return PushRemoteInputHandler(root)
         if "mode" not in args:
@@ -919,7 +919,7 @@ class DeleteTagCommand(MyGitCommand):
         if not (root := self.git_root_setting()):
             return
         if "ref" not in args:
-            return DeleteTagRefInputHandler(root, local_refs=False, remote_refs=False)
+            return DeleteTagRefInputHandler(root, tag_refs=True)
 
 
 class DeleteTagRefInputHandler(BranchInputHandler):
@@ -946,7 +946,7 @@ class DeleteTagOnRemoteCommand(MyGitCommand):
         if not (root := self.git_root_setting()):
             return
         if "ref" not in args:
-            return DeleteTagOnRemoteRefInputHandler(root, local_refs=False, remote_refs=False)
+            return DeleteTagOnRemoteRefInputHandler(root, tag_refs=True)
         if "remote" not in args:
             return RemoteInputHandler(root)
 
@@ -968,7 +968,7 @@ class PushTagCommand(MyGitCommand):
         if not (root := self.git_root_setting()):
             return
         if "ref" not in args:
-            return TagOnRemoteRefInputHandler(root, local_refs=False, remote_refs=False)
+            return DeleteTagOnRemoteRefInputHandler(root, tag_refs=True)
         if "remote" not in args:
             return RemoteInputHandler(root)
 
@@ -996,15 +996,15 @@ class SetUpstreamCommand(MyGitCommand):
         if not (root := self.git_root_setting()):
             return
         if "branch" not in args:
-            return SetUpstreamBranchInputHandler(root, remote_refs=False, tag_refs=False)
+            return SetUpstreamBranchInputHandler(root, local_refs=True)
         if "upstream" not in args:
-            return SetUpstreamUpstreamInputHandler(root, local_refs=False, tag_refs=False)
+            return SetUpstreamUpstreamInputHandler(root, remote_refs=True)
 
 
 class SetUpstreamBranchInputHandler(BranchInputHandler):
     def next_input(self, args):
         if "upstream" not in args:
-            return SetUpstreamUpstreamInputHandler(self.root, local_refs=False, tag_refs=False)
+            return SetUpstreamUpstreamInputHandler(self.root, remote_refs=True)
 
 
 class SetUpstreamUpstreamInputHandler(BranchInputHandler):
@@ -1023,7 +1023,7 @@ class UnsetUpstreamCommand(MyGitCommand):
         if not (root := self.git_root_setting()):
             return
         if "branch" not in args:
-            return BranchInputHandler(root, remote_refs=False, tag_refs=False)
+            return BranchInputHandler(root, local_refs=True)
 
 # ── GitFlow ───────────────────────────────────────────────────────────────────
 
