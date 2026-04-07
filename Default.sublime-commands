@@ -202,4 +202,12 @@
         "caption": "Git Flow: Rebase Support Branch",
         "command": "gitflow_rebase_support",
     },
+    {
+        "caption": "MyGit: Set Branch Upstream",
+        "command": "set_upstream",
+    },
+    {
+        "caption": "MyGit: Unset Branch Upstream",
+        "command": "unset_upstream",
+    },
 ]

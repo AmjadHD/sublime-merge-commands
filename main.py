@@ -984,6 +984,47 @@ class ApplyPatchCommand(MyGitCommand):
             file_types=[("Patch Files", ["patch", "diff"])],
         )
 
+
+class SetUpstreamCommand(MyGitCommand):
+    def run(self, edit, branch: str, upstream: str):  # type: ignore
+        self.git_run(["branch", "--set-upstream-to", path_to_name(upstream), path_to_name(branch)])
+
+    def input_description(self) -> str:
+        return "Set Branch Upstream"
+
+    def input(self, args):
+        if not (root := self.git_root_setting()):
+            return
+        if "branch" not in args:
+            return SetUpstreamBranchInputHandler(root, remote_refs=False, tag_refs=False)
+        if "upstream" not in args:
+            return SetUpstreamUpstreamInputHandler(root, local_refs=False, tag_refs=False)
+
+
+class SetUpstreamBranchInputHandler(BranchInputHandler):
+    def next_input(self, args):
+        if "upstream" not in args:
+            return SetUpstreamUpstreamInputHandler(self.root, local_refs=False, tag_refs=False)
+
+
+class SetUpstreamUpstreamInputHandler(BranchInputHandler):
+    def name(self) -> str:
+        return "upstream"
+
+
+class UnsetUpstreamCommand(MyGitCommand):
+    def run(self, edit, branch: str):  # type: ignore
+        self.git_run(["branch", "--unset-upstream", path_to_name(branch)])
+
+    def input_description(self) -> str:
+        return "Unset Branch Upstream"
+
+    def input(self, args):
+        if not (root := self.git_root_setting()):
+            return
+        if "branch" not in args:
+            return BranchInputHandler(root, remote_refs=False, tag_refs=False)
+
 # ── GitFlow ───────────────────────────────────────────────────────────────────
 
 _GITFLOW_INIT_FIELDS = {
