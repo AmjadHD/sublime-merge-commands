@@ -92,7 +92,14 @@ class BranchInputHandler(sublime_plugin.ListInputHandler):
         return (items, i)
 
     def placeholder(self) -> str:
-        return "Branch or Tag Name"
+        if self.tag_refs:
+            if self.local_refs or self.remote_refs:
+                refname = "Branch or Tag"
+            else:
+                refname = "Tag"
+        else:
+            refname = "Branch"
+        return f'{refname} Name'
 
 
 class CheckoutBranchCommand(MyGitCommand):
@@ -376,9 +383,6 @@ class MergeBranchBranchInputHandler(BranchInputHandler):
         # active_branch is the short name (e.g. "main"); fall back to detached HEAD OID
         self.active_branch_name = repo.head.shorthand
 
-    def placeholder(self) -> str:
-        return "Branch Name"
-
     def preview(self, text: str) -> str:
         branch_name = path_to_name(text)
         return f"Merge {branch_name} into {self.active_branch_name}"
@@ -448,8 +452,12 @@ class AddRemoteUrlInputHandler(sublime_plugin.TextInputHandler):
 
 
 class CreateTagCommand(MyGitCommand):
-    def run(self, edit, name: str, message: str): # type: ignore
-        self.git_run(["tag", name, message])
+    def run(self, edit, name: str, message=""): # type: ignore
+        cmd = ["tag", "-a", name]
+        if message:
+            cmd.append("-m")
+            cmd.append(message)
+        self.git_run(cmd)
 
     def input_description(self):
         return "Create Tag"
@@ -820,14 +828,8 @@ class RebaseBranchBranchInputHandler(BranchInputHandler):
         repo = pygit2.Repository(root)
         self.current = repo.head.shorthand if not repo.head_is_detached else str(repo.head.target)[:7]
 
-    def placeholder(self) -> str:
-        return "Branch Name"
-
     def preview(self, text: str) -> str:
         return f"Rebase {self.current} onto {path_to_name(text)}"
-
-    def next_input(self, args):
-        return None
 
 
 class PushCommand(MyGitCommand):
@@ -919,15 +921,12 @@ class DeleteTagCommand(MyGitCommand):
         if not (root := self.git_root_setting()):
             return
         if "ref" not in args:
-            return DeleteTagRefInputHandler(root, tag_refs=True)
+            return TagRefInputHandler(root, tag_refs=True)
 
 
-class DeleteTagRefInputHandler(BranchInputHandler):
+class TagRefInputHandler(BranchInputHandler):
     def name(self):
         return "ref"
-
-    def placeholder(self) -> str:
-        return "Tag Name"
 
 
 class DeleteTagOnRemoteCommand(MyGitCommand):
@@ -951,7 +950,7 @@ class DeleteTagOnRemoteCommand(MyGitCommand):
             return RemoteInputHandler(root)
 
 
-class DeleteTagOnRemoteRefInputHandler(DeleteTagRefInputHandler):
+class DeleteTagOnRemoteRefInputHandler(TagRefInputHandler):
     def next_input(self, args):
         if "remote" not in args:
             return RemoteInputHandler(self.root)

@@ -25,14 +25,14 @@
         "caption": "MyGit: Delete Branch…",
         "command": "delete_branch",
         "args": {
-            "prompt": true
+            "prompt": false
         }
     },
     {
         "caption": "MyGit: Delete Remote Branch…",
         "command": "delete_branch",
         "args": {
-            "prompt": true,
+            "prompt": false,
             "local_refs": false,
             "remote_refs": true
         }
@@ -68,7 +68,8 @@
     },
     {
         "caption": "MyGit: Delete Remote…",
-        "command": "delete_remote"
+        "command": "delete_remote",
+        "args": { "prompt": false },
     },
     {
         "caption": "MyGit: Rename Remote…",
@@ -108,7 +109,9 @@
     },
     {
         "caption": "MyGit: Delete Tag…",
-        "command": "delete_tag"
+        "command": "delete_tag",
+        "args": { "prompt": false }
+    },
     {
         "caption": "MyGit: Delete Remote Tag…",
         "command": "delete_tag_on_remote",
