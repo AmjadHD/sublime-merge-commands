@@ -115,6 +115,10 @@
         "args": { "prompt": false }
     },
     {
+        "caption": "MyGit: Push Tag…",
+        "command": "push_tag",
+    },
+    {
         "caption": "MyGit: Apply Patch…",
         "command": "apply_patch",
     },

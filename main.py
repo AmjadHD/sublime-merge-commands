@@ -957,6 +957,22 @@ class DeleteTagOnRemoteRefInputHandler(DeleteTagRefInputHandler):
             return RemoteInputHandler(self.root)
 
 
+class PushTagCommand(MyGitCommand):
+    def run(self, edit, ref: str, remote: str):  # type: ignore
+        self.git_run(["push", remote, path_to_name(ref)])
+
+    def input_description(self) -> str:
+        return "Push Tag"
+
+    def input(self, args):
+        if not (root := self.git_root_setting()):
+            return
+        if "ref" not in args:
+            return TagOnRemoteRefInputHandler(root, local_refs=False, remote_refs=False)
+        if "remote" not in args:
+            return RemoteInputHandler(root)
+
+
 class ApplyPatchCommand(MyGitCommand):
     def run(self, edit):
         def on_select(path: Optional[str]):
