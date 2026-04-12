@@ -47,7 +47,9 @@ def git_root(path: str) -> Optional[str]:
         return None
 
 
-def _is_ancestor(repo: pygit2.Repository, ancestor_oid: pygit2.Oid, descendant_oid: pygit2.Oid) -> bool:
+def _is_ancestor(
+    repo: pygit2.Repository, ancestor_oid: pygit2.Oid, descendant_oid: pygit2.Oid
+) -> bool:
     merge_base = repo.merge_base(ancestor_oid, descendant_oid)
     return merge_base == ancestor_oid
 
@@ -59,7 +61,9 @@ def is_upstream(root: str, remote: str, branch: str) -> bool:
 
 def is_branch_fully_merged(repo: pygit2.Repository, branch: str) -> bool:
     try:
-        base_commit = repo.references["refs/remotes/origin/HEAD"].resolve().peel(pygit2.Commit)
+        base_commit = (
+            repo.references["refs/remotes/origin/HEAD"].resolve().peel(pygit2.Commit)
+        )
     except KeyError:
         base_commit = repo.head.peel(pygit2.Commit)
     branch_commit = repo.references[branch].resolve().peel(pygit2.Commit)

@@ -1,12 +1,23 @@
 import sublime
 import sublime_plugin
 
-from typing import List, Optional, Set, Dict
+from typing import List, Optional, Set, Dict, Union
 import time
 import os
-os.add_dll_directory("C:\\MyDLLs") # python3.dll is not shipped with sublime text.
+
+os.add_dll_directory("C:\\MyDLLs")  # python3.dll is not shipped with sublime text.
 import pygit2  # noqa: E402
-from .utils.utils import git_root, is_upstream, active_branch_path, can_fast_forward, is_branch_fully_merged, is_valid_repo, iter_refs, name_to_path, path_to_name  # noqa: E402
+from .utils.utils import (  # noqa: E402
+    git_root,
+    is_upstream,
+    active_branch_path,
+    can_fast_forward,
+    is_branch_fully_merged,
+    is_valid_repo,
+    iter_refs,
+    name_to_path,
+    path_to_name,
+)
 
 
 class MyGitCommand(sublime_plugin.TextCommand):
@@ -16,15 +27,19 @@ class MyGitCommand(sublime_plugin.TextCommand):
 
     def git_run(self, cmd: List[str]):
         cmd.insert(0, "git")
-        if (w := self.view.window()):
+        if w := self.view.window():
             w.run_command("exec", {"cmd": cmd})
 
     def git_root_setting(self) -> Optional[str]:
         _GIT_ROOT_TTL = 60.0
         settings = self.view.settings()
         now = time.monotonic()
-
-        if "git_root" not in settings or now - settings.get("git_root_ts", 0) > _GIT_ROOT_TTL:  # type: ignore
+        
+        if (
+            "git_root" not in settings
+            or not isinstance(last := settings.get("git_root_ts", 0.0), float)
+            or now - last > _GIT_ROOT_TTL
+        ):  # type: ignore
             settings["git_root"] = git_root(
                 self.view.window().extract_variables().get("file_path", "")  # type: ignore
             )
@@ -42,7 +57,14 @@ class BranchInputHandler(sublime_plugin.ListInputHandler):
     KIND_REMOTE = (sublime.KindId.COLOR_PURPLISH, "R", "Remote Branch")
     KIND_TAG = (sublime.KindId.COLOR_YELLOWISH, "T", "Tag")
 
-    def __init__(self, root: str, local_refs=False, remote_refs=False, tag_refs=False, include_active_branch=True):
+    def __init__(
+        self,
+        root: str,
+        local_refs=False,
+        remote_refs=False,
+        tag_refs=False,
+        include_active_branch=True,
+    ):
         self.root = root
         self.local_refs = local_refs
         self.remote_refs = remote_refs
@@ -72,9 +94,7 @@ class BranchInputHandler(sublime_plugin.ListInputHandler):
                         i = j
                     else:
                         continue
-                items.append(
-                    sublime.ListInputItem(path_to_name(head), head, kind=kind)
-                )
+                items.append(sublime.ListInputItem(path_to_name(head), head, kind=kind))
         if self.remote_refs:
             kind = self.get_kind(self.KIND_REMOTE)
             items.extend(
@@ -99,11 +119,11 @@ class BranchInputHandler(sublime_plugin.ListInputHandler):
                 refname = "Tag"
         else:
             refname = "Branch"
-        return f'{refname} Name'
+        return f"{refname} Name"
 
 
 class CheckoutBranchCommand(MyGitCommand):
-    def run( # type: ignore
+    def run(  # type: ignore
         self, edit, branch: str, create_branch=False, new_name: Optional[str] = None
     ):
         if not create_branch or branch.startswith("refs/heads"):
@@ -157,8 +177,12 @@ class CheckoutBranchCreateBranchInputHandler(sublime_plugin.ListInputHandler):
     def list_items(self):
         source = "remote branch" if self.branch.startswith("refs/remotes") else "tag"
         return [
-            sublime.ListInputItem("Check out commit on " + source, False, annotation="(runs git checkout)"),
-            sublime.ListInputItem("Create local branch", True, annotation="(runs git checkout -b)"),
+            sublime.ListInputItem(
+                "Check out commit on " + source, False, annotation="(runs git checkout)"
+            ),
+            sublime.ListInputItem(
+                "Create local branch", True, annotation="(runs git checkout -b)"
+            ),
         ]
 
     def next_input(self, args):
@@ -180,20 +204,26 @@ class CheckoutBranchNewNameInputHandler(sublime_plugin.TextInputHandler):
         return ""
 
     def initial_selection(self):
-        return [(0, len(self.branch_name.rsplit("/", 1)[-1]))] if not self.branch.startswith("refs/tags") else []
+        return (
+            [(0, len(self.branch_name.rsplit("/", 1)[-1]))]
+            if not self.branch.startswith("refs/tags")
+            else []
+        )
 
     def placeholder(self):
         return "New Branch Name"
 
     def preview(self, text: str):
-        return f"Create new branch{' ' if text else ''}{text} based on {self.branch_name}"
+        return (
+            f"Create new branch{' ' if text else ''}{text} based on {self.branch_name}"
+        )
 
-    def validate(self, text: str, event = None):
+    def validate(self, text: str, event=None):
         return len(text) != 0
 
 
 class CreateBranchCommand(MyGitCommand):
-    def run(self, edit, name: str): # type: ignore
+    def run(self, edit, name: str):  # type: ignore
         self.git_run(["checkout", "-b", name])
 
     def input_description(self):
@@ -211,12 +241,12 @@ class CreateBranchNameInputHandler(sublime_plugin.TextInputHandler):
     def placeholder(self):
         return "Branch Name"
 
-    def validate(self, text: str, event = None):
+    def validate(self, text: str, event=None):
         return len(text) != 0
 
 
 class RenameBranchCommand(MyGitCommand):
-    def run(self, edit, branch: str, new_name: str): # type: ignore
+    def run(self, edit, branch: str, new_name: str):  # type: ignore
         shorthand = path_to_name(branch) if branch.startswith("refs/") else branch
         self.git_run(["branch", "-m", shorthand, new_name])
 
@@ -260,12 +290,12 @@ class RenameBranchNewNameInputHandler(sublime_plugin.TextInputHandler):
     def preview(self, text: str):
         return f"Rename {self.branch} to {text}"
 
-    def validate(self, text: str, event = None):
+    def validate(self, text: str, event=None):
         return len(text) != 0
 
 
 class DeleteBranchCommand(MyGitCommand):
-    def run(self, edit, branch: str, prompt=True): # type: ignore
+    def run(self, edit, branch: str, prompt=True):  # type: ignore
         if not (root := self.git_root_setting()):
             return
         branch_name = path_to_name(branch)
@@ -281,13 +311,17 @@ class DeleteBranchCommand(MyGitCommand):
         if branch.startswith("refs/remotes/"):
             repo = pygit2.Repository(root)
             if not is_branch_fully_merged(repo, branch):
-                if sublime.ok_cancel_dialog(
-                    branch_name + " isn't fully merged.\n\
+                if (
+                    sublime.ok_cancel_dialog(
+                        branch_name
+                        + " isn't fully merged.\n\
                     Do you want to force the deletion?\n\
                     This will also delete the branch on the remote repository.",
-                    "Force Delete",
-                    "Confirm Force Delete",
-                ) == sublime.DIALOG_YES:
+                        "Force Delete",
+                        "Confirm Force Delete",
+                    )
+                    == sublime.DIALOG_YES
+                ):
                     cmd = ["push", "--delete", "--", "origin", branch_name]
         self.git_run(cmd)
 
@@ -326,10 +360,12 @@ class OptionsInputHandler(sublime_plugin.ListInputHandler):
     def list_items(self):
         return (
             [
-                sublime.ListInputItem(item, self.accumulated + [item], annotation=self.options[item])
+                sublime.ListInputItem(
+                    item, self.accumulated + [item], annotation=self.options[item]
+                )
                 for item in self.available
             ],
-            0
+            0,
         )
 
     def confirm(self, value: List[str], event=None):
@@ -362,7 +398,11 @@ class MergeBranchCommand(MyGitCommand):
 
     def is_enabled(self):
         root = self.git_root_setting()
-        return root is not None and is_valid_repo(root) and not pygit2.Repository(root).head_is_detached
+        return (
+            root is not None
+            and is_valid_repo(root)
+            and not pygit2.Repository(root).head_is_detached
+        )
 
     def input_description(self):
         return "Merge Branch"
@@ -376,9 +416,12 @@ class MergeBranchCommand(MyGitCommand):
         if "options" not in args:
             return MergeBranchOptionsInputHandler()
 
+
 class MergeBranchBranchInputHandler(BranchInputHandler):
     def __init__(self, root: str):
-        super().__init__(root, local_refs=True, remote_refs=True, include_active_branch=False)
+        super().__init__(
+            root, local_refs=True, remote_refs=True, include_active_branch=False
+        )
         repo = pygit2.Repository(self.root)
         # active_branch is the short name (e.g. "main"); fall back to detached HEAD OID
         self.active_branch_name = repo.head.shorthand
@@ -394,22 +437,22 @@ class MergeBranchBranchInputHandler(BranchInputHandler):
 
 class MergeBranchOptionsInputHandler(OptionsInputHandler):
     options = {
-        "merge":                        "Select to run command",
-        "--no-ff":                      "Always create a merge commit",
-        "--no-commit":                  "Stage the merge, but don't commit yet",
-        "--squash":                     "Combine merged changes into a single commit",
-        "--allow-unrelated-histories":  "Allow merging branches that do not share a common ancestor",
+        "merge": "Select to run command",
+        "--no-ff": "Always create a merge commit",
+        "--no-commit": "Stage the merge, but don't commit yet",
+        "--squash": "Combine merged changes into a single commit",
+        "--allow-unrelated-histories": "Allow merging branches that do not share a common ancestor",
     }
     excludes = {
-        "--no-ff":     {"--squash"},
-        "--squash":    {"--no-ff", "--no-commit"},
+        "--no-ff": {"--squash"},
+        "--squash": {"--no-ff", "--no-commit"},
         "--no-commit": {"--squash"},
     }
     terminal = "merge"
 
 
 class AddRemoteCommand(MyGitCommand):
-    def run(self, edit, name: str, url: str): # type: ignore
+    def run(self, edit, name: str, url: str):  # type: ignore
         self.git_run(["remote", "add", name, url])
 
     def input_description(self):
@@ -426,7 +469,7 @@ class AddRemoteNameInputHandler(sublime_plugin.TextInputHandler):
     def name(self):
         return "name"
 
-    def validate(self, text: str, event = None):
+    def validate(self, text: str, event=None):
         return not any(c in text for c in " ./\\:[?^*~")
 
     def preview(self, text: str):
@@ -444,7 +487,7 @@ class AddRemoteUrlInputHandler(sublime_plugin.TextInputHandler):
     def name(self):
         return "url"
 
-    def validate(self, text: str, event = None):
+    def validate(self, text: str, event=None):
         return len(text) != 0
 
     def placeholder(self):
@@ -452,7 +495,7 @@ class AddRemoteUrlInputHandler(sublime_plugin.TextInputHandler):
 
 
 class CreateTagCommand(MyGitCommand):
-    def run(self, edit, name: str, message=""): # type: ignore
+    def run(self, edit, name: str, message=""):  # type: ignore
         cmd = ["tag", "-a", name]
         if message:
             cmd.append("-m")
@@ -486,7 +529,7 @@ class CreateTagNameInputHandler(sublime_plugin.TextInputHandler):
     def placeholder(self):
         return "Tag Name"
 
-    def validate(self, text: str, event = None):
+    def validate(self, text: str, event=None):
         return len(text) != 0
 
     def preview(self, text: str):
@@ -512,7 +555,7 @@ class CreateTagMessageInputHandler(sublime_plugin.TextInputHandler):
 
 
 class DeleteRemoteCommand(MyGitCommand):
-    def run(self, edit, remote: str, prompt=True): # type: ignore
+    def run(self, edit, remote: str, prompt=True):  # type: ignore
         delete = True
         if prompt:
             delete = sublime.ok_cancel_dialog(
@@ -536,7 +579,7 @@ class RemoteInputHandler(sublime_plugin.ListInputHandler):
     def name(self):
         return "remote"
 
-    def list_items(self): # type: ignore
+    def list_items(self):  # type: ignore
         repo = pygit2.Repository(self.root)
         return list(repo.remotes.names())
 
@@ -578,7 +621,7 @@ class RenameRemoteNewNameInputHandler(sublime_plugin.TextInputHandler):
 
 
 class AddSubmoduleCommand(MyGitCommand):
-    def run(self, edit, repository_path: str, submodule_name: str): # type: ignore
+    def run(self, edit, repository_path: str, submodule_name: str):  # type: ignore
         self.git_run(
             ["submodule", "add", "--name", submodule_name, "--", repository_path],
         )
@@ -600,7 +643,7 @@ class AddSubmoduleRepositoryPathInputHandler(sublime_plugin.TextInputHandler):
     def placeholder(self):
         return "Repository URL"
 
-    def validate(self, text: str, event = None):
+    def validate(self, text: str, event=None):
         return len(text) != 0
 
     def preview(self, text: str):
@@ -632,12 +675,16 @@ class AddSubmoduleSubmoduleNameInputHandler(sublime_plugin.TextInputHandler):
 
 
 def get_stash_cmd(selected: List[str], text: str) -> List[str]:
-    subcommand = "push" if '--include-untracked' in selected or '--keep-index' in selected else "save"
+    subcommand = (
+        "push"
+        if "--include-untracked" in selected or "--keep-index" in selected
+        else "save"
+    )
     result = ["stash", subcommand, *selected]
     if text:
         if subcommand == "push":
             result += "-m"
-        result.append(f'"{text}"' if ' ' in text else text)
+        result.append(f'"{text}"' if " " in text else text)
     return result
 
 
@@ -661,14 +708,14 @@ class StashCommand(MyGitCommand):
 
 class StashOptionsInputHandler(OptionsInputHandler):
     options = {
-        "stash":               "Select to run command",
+        "stash": "Select to run command",
         "--include-untracked": "Include untracked files in the stash",
-        "--keep-index":        "Leave staged changes in the working directory",
-        "--staged":            "Stash staged changes only",
+        "--keep-index": "Leave staged changes in the working directory",
+        "--staged": "Stash staged changes only",
     }
     excludes = {
         "--include-untracked": {"--staged"},
-        "--staged":            {"--include-untracked"},
+        "--staged": {"--include-untracked"},
     }
     terminal = "stash"
 
@@ -685,7 +732,7 @@ class StashMessageInputHandler(sublime_plugin.TextInputHandler):
         return "message"
 
     def preview(self, text: str) -> str:
-        return "Runs: git " + ' '.join(get_stash_cmd(self.selected, text))
+        return "Runs: git " + " ".join(get_stash_cmd(self.selected, text))
 
     def placeholder(self) -> str:
         return "Optional Message"
@@ -744,11 +791,11 @@ class FetchCommand(MyGitCommand):
 
 class FetchModeInputHandler(sublime_plugin.ListInputHandler):
     modes = {
-        "fetch":              "Fetch from a remote",
-        "fetch --prune":      "Fetch and delete stale remote-tracking refs",
-        "fetch --tags":       "Fetch all tags from a remote",
-        "fetch --all":        "Fetch from all remotes",
-        "fetch --all --prune":"Fetch from all remotes and delete stale remote-tracking refs",
+        "fetch": "Fetch from a remote",
+        "fetch --prune": "Fetch and delete stale remote-tracking refs",
+        "fetch --tags": "Fetch all tags from a remote",
+        "fetch --all": "Fetch from all remotes",
+        "fetch --all --prune": "Fetch from all remotes and delete stale remote-tracking refs",
         "fetch --all --tags": "Fetch all tags from all remotes",
     }
 
@@ -787,15 +834,19 @@ class PullCommand(MyGitCommand):
             return
         if "mode" not in args:
             return PullModeInputHandler(root)
-        if "remote" not in args and "--all" not in args["mode"] and "pull" not in args["mode"]:
+        if (
+            "remote" not in args
+            and "--all" not in args["mode"]
+            and "pull" not in args["mode"]
+        ):
             return RemoteInputHandler(root)
 
 
 class PullModeInputHandler(FetchModeInputHandler):
     modes = {
-        "pull":                      "Pull from tracking remote",
-        "pull --ff-only":            "Pull, fail if a merge commit would be created",
-        "pull --rebase":             "Rebase local commits on top of fetched changes",
+        "pull": "Pull from tracking remote",
+        "pull --ff-only": "Pull, fail if a merge commit would be created",
+        "pull --rebase": "Rebase local commits on top of fetched changes",
         "pull --rebase --autostash": "Rebase, automatically stashing and restoring local changes",
         **FetchModeInputHandler.modes,
     }
@@ -804,7 +855,11 @@ class PullModeInputHandler(FetchModeInputHandler):
         return "Pull Options"
 
     def next_input(self, args):
-        if "remote" not in args and "--all" not in args["mode"] and "pull" not in args["mode"]:
+        if (
+            "remote" not in args
+            and "--all" not in args["mode"]
+            and "pull" not in args["mode"]
+        ):
             return RemoteInputHandler(self.root)
 
 
@@ -826,7 +881,11 @@ class RebaseBranchBranchInputHandler(BranchInputHandler):
     def __init__(self, root: str):
         super().__init__(root, local_refs=True, remote_refs=True)
         repo = pygit2.Repository(root)
-        self.current = repo.head.shorthand if not repo.head_is_detached else str(repo.head.target)[:7]
+        self.current = (
+            repo.head.shorthand
+            if not repo.head_is_detached
+            else str(repo.head.target)[:7]
+        )
 
     def preview(self, text: str) -> str:
         return f"Rebase {self.current} onto {path_to_name(text)}"
@@ -841,9 +900,12 @@ class PushCommand(MyGitCommand):
         tracking_ref = f"refs/remotes/{remote}/{branch_name}"
         no_tracking_ref = tracking_ref not in repo.references
         if prompt and (no_tracking_ref or can_fast_forward(repo, tracking_ref)):
-            if sublime.ok_cancel_dialog(
-                f"Push {branch_name} to {remote}?", "Push", "Confirm Push"
-            ) != sublime.DIALOG_YES:
+            if (
+                sublime.ok_cancel_dialog(
+                    f"Push {branch_name} to {remote}?", "Push", "Confirm Push"
+                )
+                != sublime.DIALOG_YES
+            ):
                 return
         cmd = mode.split() + [remote, branch]
         self.git_run(cmd)
@@ -859,7 +921,9 @@ class PushCommand(MyGitCommand):
         if "remote" not in args:
             return PushRemoteInputHandler(root)
         if "mode" not in args:
-            return PushModeInputHandler(is_upstream(root, args["remote"], args["branch"]))
+            return PushModeInputHandler(
+                is_upstream(root, args["remote"], args["branch"])
+            )
 
 
 class PushBranchInputHandler(BranchInputHandler):
@@ -870,21 +934,25 @@ class PushBranchInputHandler(BranchInputHandler):
         if "remote" not in args:
             return PushRemoteInputHandler(self.root)
         if "mode" not in args:
-            return PushModeInputHandler(is_upstream(self.root, args["remote"], args["branch"]))
+            return PushModeInputHandler(
+                is_upstream(self.root, args["remote"], args["branch"])
+            )
 
 
 class PushRemoteInputHandler(RemoteInputHandler):
     def next_input(self, args):
         if "mode" not in args:
-            return PushModeInputHandler(is_upstream(self.root, args["remote"], args["branch"]))
+            return PushModeInputHandler(
+                is_upstream(self.root, args["remote"], args["branch"])
+            )
 
 
 class PushModeInputHandler(sublime_plugin.ListInputHandler):
     push_modes = {
-        "push":                   "Push to remote",
-        "push --force-with-lease":"Push, fail if remote has changes you don't have",
-        "push --force":           "Force push, overwriting remote history",
-        "push --no-verify":       "Push, skipping pre-push hooks",
+        "push": "Push to remote",
+        "push --force-with-lease": "Push, fail if remote has changes you don't have",
+        "push --force": "Force push, overwriting remote history",
+        "push --no-verify": "Push, skipping pre-push hooks",
     }
 
     def __init__(self, is_upstream: bool) -> None:
@@ -908,9 +976,13 @@ class PushModeInputHandler(sublime_plugin.ListInputHandler):
 class DeleteTagCommand(MyGitCommand):
     def run(self, edit, ref: str, prompt=True):  # type: ignore
         tag_name = path_to_name(ref)
-        if prompt and sublime.ok_cancel_dialog(
-            f"Delete tag {tag_name}?", "Delete", "Confirm Delete"
-            ) != sublime.DIALOG_YES:
+        if (
+            prompt
+            and sublime.ok_cancel_dialog(
+                f"Delete tag {tag_name}?", "Delete", "Confirm Delete"
+            )
+            != sublime.DIALOG_YES
+        ):
             return
         self.git_run(["tag", "-d", tag_name])
 
@@ -932,9 +1004,13 @@ class TagRefInputHandler(BranchInputHandler):
 class DeleteTagOnRemoteCommand(MyGitCommand):
     def run(self, edit, ref: str, remote: str, prompt=True):  # type: ignore
         tag_name = path_to_name(ref)
-        if prompt and sublime.ok_cancel_dialog(
-            f"Delete tag {tag_name} on {remote}?", "Delete", "Confirm Delete"
-        ) != sublime.DIALOG_YES:
+        if (
+            prompt
+            and sublime.ok_cancel_dialog(
+                f"Delete tag {tag_name} on {remote}?", "Delete", "Confirm Delete"
+            )
+            != sublime.DIALOG_YES
+        ):
             return
         self.git_run(["push", remote, "--delete", tag_name])
 
@@ -974,8 +1050,10 @@ class PushTagCommand(MyGitCommand):
 
 class ApplyPatchCommand(MyGitCommand):
     def run(self, edit):
-        def on_select(path: Optional[str]):
+        def on_select(path: Union[str, List[str], None]):
             if path is not None:
+                if not isinstance(path, str):
+                    path = path[0]
                 self.git_run(["apply", path])
 
         sublime.open_dialog(
@@ -986,7 +1064,14 @@ class ApplyPatchCommand(MyGitCommand):
 
 class SetUpstreamCommand(MyGitCommand):
     def run(self, edit, branch: str, upstream: str):  # type: ignore
-        self.git_run(["branch", "--set-upstream-to", path_to_name(upstream), path_to_name(branch)])
+        self.git_run(
+            [
+                "branch",
+                "--set-upstream-to",
+                path_to_name(upstream),
+                path_to_name(branch),
+            ]
+        )
 
     def input_description(self) -> str:
         return "Set Branch Upstream"
@@ -1024,19 +1109,21 @@ class UnsetUpstreamCommand(MyGitCommand):
         if "branch" not in args:
             return BranchInputHandler(root, local_refs=True)
 
+
 # ── GitFlow ───────────────────────────────────────────────────────────────────
 
 _GITFLOW_INIT_FIELDS = {
-    "master":             ("Master Branch", "gitflow.branch.master", "master"),
-    "develop":            ("Development Branch", "gitflow.branch.develop", "develop"),
-    "feature_prefix":     ("Feature Branch Prefix", "gitflow.prefix.feature", "feature/"),
-    "bugfix_prefix":      ("Bugfix Branch Prefix", "gitflow.prefix.bugfix", "bugfix/"),
-    "release_prefix":     ("Release Branch Prefix", "gitflow.prefix.release", "release/"),
-    "hotfix_prefix":      ("Hotfix Branch Prefix", "gitflow.prefix.hotfix", "hotfix/"),
-    "support_prefix":     ("Support Branch Prefix", "gitflow.prefix.support", "support/"),
+    "master": ("Master Branch", "gitflow.branch.master", "master"),
+    "develop": ("Development Branch", "gitflow.branch.develop", "develop"),
+    "feature_prefix": ("Feature Branch Prefix", "gitflow.prefix.feature", "feature/"),
+    "bugfix_prefix": ("Bugfix Branch Prefix", "gitflow.prefix.bugfix", "bugfix/"),
+    "release_prefix": ("Release Branch Prefix", "gitflow.prefix.release", "release/"),
+    "hotfix_prefix": ("Hotfix Branch Prefix", "gitflow.prefix.hotfix", "hotfix/"),
+    "support_prefix": ("Support Branch Prefix", "gitflow.prefix.support", "support/"),
     "version_tag_prefix": ("Version Tag Prefix", "gitflow.prefix.versiontag", ""),
-    "hooks_path":         ("Git Hooks Path", "gitflow.path.hooks", ".git/hooks"),
+    "hooks_path": ("Git Hooks Path", "gitflow.path.hooks", ".git/hooks"),
 }
+
 
 def _gitflow_is_initialized(root: str) -> bool:
     try:
@@ -1076,7 +1163,9 @@ class InitGitflowCommand(GitflowConfigCommandBase):
         if not isinstance(configs, dict):
             return
         self._apply_configs(configs)
-        self.git_run(["checkout", "-b", configs["master"], f"origin/{configs['master']}"])
+        self.git_run(
+            ["checkout", "-b", configs["master"], f"origin/{configs['master']}"]
+        )
         self.git_run(["checkout", "-b", configs["develop"], configs["master"]])
 
     def is_enabled(self):
@@ -1134,7 +1223,9 @@ class GitflowConfigsInputHandler(sublime_plugin.ListInputHandler):
     def next_input(self, args):
         if isinstance(args["configs"], dict):
             return None
-        return GitflowEditValueInputHandler(args["configs"], self.configs, self.command_name)
+        return GitflowEditValueInputHandler(
+            args["configs"], self.configs, self.command_name
+        )
 
 
 class GitflowEditValueInputHandler(sublime_plugin.TextInputHandler):
@@ -1163,14 +1254,16 @@ class GitflowEditValueInputHandler(sublime_plugin.TextInputHandler):
 
     def confirm(self, value: str, event=None):
         updated = {**self.configs, self.key: value}
-        sublime.set_timeout(lambda: sublime.active_window().run_command(
-            "show_overlay",
-            {
-                "overlay": "command_palette",
-                "command": self.command_name,
-                "args": {"configs": updated},
-            }
-        ))
+        sublime.set_timeout(
+            lambda: sublime.active_window().run_command(
+                "show_overlay",
+                {
+                    "overlay": "command_palette",
+                    "command": self.command_name,
+                    "args": {"configs": updated},
+                },
+            )
+        )
 
 
 class GitflowStartNameInputHandler(sublime_plugin.TextInputHandler):
@@ -1208,74 +1301,95 @@ class GitflowSimpleCommand(MyGitCommand):
 
 # start
 
+
 class GitflowStartBugfixCommand(GitflowStartCommand):
     flow_type = "bugfix"
+
 
 class GitflowStartFeatureCommand(GitflowStartCommand):
     flow_type = "feature"
 
+
 class GitflowStartHotfixCommand(GitflowStartCommand):
     flow_type = "hotfix"
+
 
 class GitflowStartReleaseCommand(GitflowStartCommand):
     flow_type = "release"
 
+
 class GitflowStartSupportCommand(GitflowStartCommand):
     flow_type = "support"
 
+
 # finish
+
 
 class GitflowFinishBugfixCommand(GitflowSimpleCommand):
     flow_type = "bugfix"
     flow_action = "finish"
 
+
 class GitflowFinishFeatureCommand(GitflowSimpleCommand):
     flow_type = "feature"
     flow_action = "finish"
+
 
 class GitflowFinishHotfixCommand(GitflowSimpleCommand):
     flow_type = "hotfix"
     flow_action = "finish"
 
+
 class GitflowFinishReleaseCommand(GitflowSimpleCommand):
     flow_type = "release"
     flow_action = "finish"
 
+
 # publish
+
 
 class GitflowPublishBugfixCommand(GitflowSimpleCommand):
     flow_type = "bugfix"
     flow_action = "publish"
 
+
 class GitflowPublishFeatureCommand(GitflowSimpleCommand):
     flow_type = "feature"
     flow_action = "publish"
+
 
 class GitflowPublishHotfixCommand(GitflowSimpleCommand):
     flow_type = "hotfix"
     flow_action = "publish"
 
+
 class GitflowPublishReleaseCommand(GitflowSimpleCommand):
     flow_type = "release"
     flow_action = "publish"
 
+
 # rebase
+
 
 class GitflowRebaseBugfixCommand(GitflowSimpleCommand):
     flow_type = "bugfix"
     flow_action = "rebase"
 
+
 class GitflowRebaseFeatureCommand(GitflowSimpleCommand):
     flow_type = "feature"
     flow_action = "rebase"
+
 
 class GitflowRebaseHotfixCommand(GitflowSimpleCommand):
     flow_type = "hotfix"
     flow_action = "rebase"
 
+
 class GitflowRebaseReleaseCommand(GitflowSimpleCommand):
     flow_type = "release"
     flow_action = "rebase"
+
 
 class GitflowRebaseSupportCommand(GitflowSimpleCommand):
     flow_type = "support"
