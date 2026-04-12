@@ -1048,6 +1048,32 @@ class PushTagCommand(MyGitCommand):
             return RemoteInputHandler(root)
 
 
+class CleanWorkingDirCommand(MyGitCommand):
+    def run(self, edit):  # type: ignore
+        if (
+            sublime.ok_cancel_dialog(
+                "This will delete all untracked files in the working directory.\n\n"
+                + "Are you sure you want to continue",
+                "Delete",
+                "Confirm Delete",
+            )
+            != sublime.DIALOG_YES
+        ):
+            return
+        self.git_run(["clean", "-fd"])
+
+    def is_enabled(self):
+        if not (root := self.git_root_setting()):
+            return False
+        try:
+            repo = pygit2.Repository(root)
+            return any(
+                status & pygit2.GIT_STATUS_WT_NEW for status in repo.status().values()
+            )
+        except pygit2.GitError:
+            return False
+
+
 class ApplyPatchCommand(MyGitCommand):
     def run(self, edit):
         def on_select(path: Union[str, List[str], None]):

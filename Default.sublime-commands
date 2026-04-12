@@ -122,6 +122,10 @@
         "command": "push_tag",
     },
     {
+        "caption": "MyGit: Delete All Untracked Files…\tgit clean -fd",
+        "command": "clean_working_dir",
+    },
+    {
         "caption": "MyGit: Apply Patch…",
         "command": "apply_patch",
     },
